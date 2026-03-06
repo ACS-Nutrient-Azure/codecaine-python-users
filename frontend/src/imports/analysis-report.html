@@ -1,0 +1,660 @@
+- html 코드
+    
+    ```html
+    <!doctype html>
+    <html lang="ko">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>분석 리포트 | Portal</title>
+      <style>
+        :root{
+          --bg:#ffffff;
+          --text:#0f172a;
+          --muted:#64748b;
+          --line:rgba(15,23,42,0.08);
+    
+          --card: rgba(255,255,255,0.92);
+          --shadow: 0 18px 60px rgba(15,23,42,0.10);
+          --shadow-soft: 0 10px 30px rgba(15,23,42,0.08);
+          --radius: 22px;
+    
+          --blue:#3b82f6;
+          --blue2:#60a5fa;
+          --chip: rgba(59,130,246,0.10);
+          --chipText:#2563eb;
+        }
+    
+        *{ box-sizing:border-box; }
+        html,body{ height:100%; }
+        body{
+          margin:0;
+          font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+          color:var(--text);
+          background:var(--bg);
+        }
+    
+        .app{ display:flex; min-height:100vh; }
+    
+        /* LEFT NAV */
+        .sidebar{
+          width: 280px;
+          padding: 22px 18px;
+          border-right: 1px solid var(--line);
+          background: linear-gradient(180deg, rgba(59,130,246,0.06), rgba(96,165,250,0.02) 55%, rgba(255,255,255,1));
+        }
+        .brand{
+          display:flex; align-items:center; gap:10px;
+          padding: 10px 10px 18px;
+          font-weight: 800;
+          letter-spacing: -0.2px;
+        }
+        .logo{
+          width: 34px; height: 34px; border-radius: 12px;
+          background: radial-gradient(circle at 30% 30%, rgba(96,165,250,1), rgba(59,130,246,1));
+          box-shadow: 0 10px 24px rgba(59,130,246,0.25);
+        }
+        .brand span{ font-size:18px; }
+    
+        .nav{ display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+        .nav a{
+          text-decoration:none;
+          color: var(--text);
+          padding: 12px 12px;
+          border-radius: 14px;
+          display:flex; align-items:center; gap:10px;
+          font-weight: 700;
+          border: 1px solid transparent;
+        }
+        .nav a:hover{ background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.10); }
+        .nav a.active{ background: rgba(59,130,246,0.10); border-color: rgba(59,130,246,0.14); color:#1d4ed8; }
+        .ico{
+          width: 28px; height: 28px; border-radius: 12px;
+          display:grid; place-items:center;
+          background: rgba(15,23,42,0.04);
+          border: 1px solid rgba(15,23,42,0.06);
+          color: rgba(15,23,42,0.70);
+          font-size: 14px;
+        }
+        .nav a.active .ico{
+          background: rgba(59,130,246,0.12);
+          border-color: rgba(59,130,246,0.18);
+          color: #2563eb;
+        }
+        .sidebar-footer{
+          margin-top:auto;
+          padding: 14px 10px 6px;
+          color: var(--muted);
+          font-size: 12px;
+          line-height: 1.4;
+          opacity: 0.9;
+        }
+    
+        /* MAIN */
+        .main{
+          flex:1;
+          padding: 26px 28px 40px;
+          position: relative;
+          overflow:hidden;
+        }
+        .main:before{
+          content:"";
+          position:absolute;
+          inset:-200px -200px auto auto;
+          width: 620px; height: 620px;
+          background: radial-gradient(circle at 35% 35%,
+            rgba(96,165,250,0.26),
+            rgba(59,130,246,0.10) 45%,
+            rgba(255,255,255,0) 70%);
+          pointer-events:none;
+        }
+        .main:after{
+          content:"";
+          position:absolute;
+          inset:auto auto -240px -240px;
+          width: 560px; height: 560px;
+          background: radial-gradient(circle at 35% 35%,
+            rgba(148,163,184,0.22),
+            rgba(255,255,255,0) 65%);
+          pointer-events:none;
+        }
+    
+        .topbar{
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 12px;
+          position:relative;
+          z-index:1;
+        }
+        .title-wrap{ display:flex; flex-direction:column; gap:6px; }
+        h1{ margin:0; font-size: 34px; letter-spacing:-0.6px; }
+        .subtitle{ margin:0; color: var(--muted); font-size:14px; }
+    
+        .user-chip{
+          display:flex; align-items:center; gap: 10px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          border: 1px solid var(--line);
+          background: rgba(255,255,255,0.85);
+          box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+          z-index:1;
+        }
+        .avatar{
+          width: 34px; height: 34px; border-radius: 999px;
+          background: radial-gradient(circle at 30% 30%, rgba(203,213,225,1), rgba(148,163,184,1));
+        }
+        .user-meta{ display:flex; flex-direction:column; gap:2px; line-height:1.1; }
+        .user-meta b{ font-size: 13px; }
+        .user-meta span{ font-size: 12px; color: var(--muted); }
+    
+        /* ONE REPORT CARD */
+        .report-wrap{
+          margin-top: 22px;
+          position:relative;
+          z-index:1;
+          max-width: 1100px;
+        }
+        .report{
+          border-radius: var(--radius);
+          border: 1px solid var(--line);
+          background: var(--card);
+          box-shadow: var(--shadow);
+          overflow:hidden;
+        }
+        .report-header{
+          padding: 18px 18px 16px;
+          display:flex;
+          align-items:flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          border-bottom: 1px solid rgba(15,23,42,0.06);
+          background: linear-gradient(180deg, rgba(59,130,246,0.06), rgba(255,255,255,0.94));
+        }
+        .report-header h2{
+          margin:0;
+          font-size: 18px;
+          letter-spacing:-0.2px;
+        }
+        .report-header p{
+          margin: 6px 0 0;
+          color: var(--muted);
+          font-size: 13px;
+          line-height:1.4;
+        }
+    
+        .badge{
+          display:inline-flex;
+          align-items:center;
+          gap: 6px;
+          padding: 8px 10px;
+          border-radius: 999px;
+          background: rgba(59,130,246,0.10);
+          color: #2563eb;
+          border: 1px solid rgba(59,130,246,0.12);
+          font-weight: 800;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+    
+        .report-body{ padding: 0; }
+    
+        /* Sections inside report */
+        .section{
+          padding: 18px;
+          border-top: 1px solid rgba(15,23,42,0.06);
+        }
+        .section:first-child{ border-top: 0; }
+    
+        .section-title{
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .section-title h3{
+          margin:0;
+          font-size: 15px;
+          letter-spacing:-0.2px;
+        }
+        .section-title span{
+          font-size: 12px;
+          color: var(--muted);
+        }
+    
+        /* Health check "one section" table */
+        .hc-table{
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          overflow: hidden;
+          border: 1px solid rgba(15,23,42,0.08);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.9);
+          box-shadow: 0 10px 22px rgba(15,23,42,0.05);
+        }
+        .hc-table thead th{
+          text-align: left;
+          font-size: 12px;
+          color: rgba(15,23,42,0.70);
+          font-weight: 900;
+          padding: 12px 14px;
+          background: rgba(15,23,42,0.02);
+          border-bottom: 1px solid rgba(15,23,42,0.08);
+          letter-spacing: -0.1px;
+        }
+        .hc-table tbody td{
+          padding: 12px 14px;
+          border-bottom: 1px solid rgba(15,23,42,0.06);
+          font-size: 13px;
+          vertical-align: top;
+        }
+        .hc-table tbody tr:last-child td{ border-bottom: none; }
+    
+        .hc-muted{
+          color: var(--muted);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+        .hc-chip{
+          display:inline-flex;
+          align-items:center;
+          gap:6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(59,130,246,0.14);
+          background: rgba(59,130,246,0.10);
+          color: #1d4ed8;
+          font-weight: 900;
+          font-size: 11px;
+          white-space: nowrap;
+        }
+    
+        /* Need nutrient block */
+        .need{
+          display:flex;
+          gap: 14px;
+          align-items:flex-start;
+        }
+        .need-ico{
+          width: 52px; height: 52px;
+          border-radius: 18px;
+          background: radial-gradient(circle at 30% 30%, rgba(96,165,250,0.35), rgba(59,130,246,0.18));
+          border: 1px solid rgba(59,130,246,0.18);
+          display:grid; place-items:center;
+          box-shadow: 0 16px 30px rgba(59,130,246,0.10);
+          font-size: 22px;
+          flex: 0 0 auto;
+        }
+        .need-title{
+          margin:0;
+          font-size: 22px;
+          letter-spacing:-0.35px;
+        }
+        .need-title b{ color:#2563eb; }
+        .need-desc{
+          margin:6px 0 0;
+          color: var(--muted);
+          font-size: 13px;
+          line-height:1.55;
+        }
+    
+        /* Nutrient summary text (no buttons for rationale/caution) */
+        .summary-text{
+          margin: 10px 0 0;
+          padding: 14px 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(15,23,42,0.06);
+          background: rgba(15,23,42,0.02);
+          color: rgba(15,23,42,0.85);
+          font-size: 13px;
+          line-height: 1.7;
+        }
+        .summary-text b{
+          color:#2563eb;
+          font-weight: 950;
+        }
+        .summary-text .muted{
+          color: var(--muted);
+          font-weight: 800;
+        }
+        .summary-text ul{
+          margin: 10px 0 0;
+          padding-left: 18px;
+        }
+        .summary-text li{ margin: 6px 0; }
+    
+        /* Products */
+        .products{
+          display:grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+        }
+        .p-card{
+          border-radius: 18px;
+          border: 1px solid rgba(15,23,42,0.08);
+          background: rgba(255,255,255,0.92);
+          box-shadow: 0 10px 22px rgba(15,23,42,0.06);
+          padding: 12px;
+          display:flex;
+          flex-direction:column;
+          gap: 10px;
+          min-height: 168px;
+        }
+        .p-thumb{
+          height: 78px;
+          border-radius: 14px;
+          border: 1px dashed rgba(15,23,42,0.12);
+          background: radial-gradient(circle at 30% 30%, rgba(226,232,240,0.8), rgba(241,245,249,1));
+          display:grid;
+          place-items:center;
+          color: rgba(15,23,42,0.50);
+          font-weight: 900;
+          letter-spacing:-0.2px;
+          font-size: 12px;
+        }
+        .p-title{
+          margin:0;
+          font-size: 13px;
+          font-weight: 900;
+          letter-spacing:-0.2px;
+        }
+        .p-meta{
+          font-size: 12px;
+          color: var(--muted);
+          margin-top:-4px;
+        }
+        .p-row{
+          margin-top:auto;
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .price{
+          font-weight: 900;
+          letter-spacing:-0.2px;
+          font-size: 13px;
+        }
+    
+        /* Buttons */
+        .actions{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-top: 12px;
+        }
+        .btn{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          gap: 8px;
+          border: none;
+          cursor:pointer;
+          padding: 12px 16px;
+          border-radius: 16px;
+          font-weight: 900;
+          color: white;
+          background: linear-gradient(180deg, rgba(96,165,250,1), rgba(59,130,246,1));
+          box-shadow: 0 14px 28px rgba(59,130,246,0.22);
+          white-space: nowrap;
+        }
+        .btn.secondary{
+          color: #1d4ed8;
+          background: rgba(59,130,246,0.10);
+          border: 1px solid rgba(59,130,246,0.16);
+          box-shadow: none;
+        }
+        .btn.mini{
+          padding: 10px 12px;
+          border-radius: 14px;
+          font-size: 12px;
+        }
+    
+        /* Responsive */
+        @media (max-width: 1100px){
+          .products{ grid-template-columns: repeat(2, 1fr); }
+          .sidebar{ width: 250px; }
+        }
+        @media (max-width: 760px){
+          .app{ flex-direction: column; }
+          .sidebar{ width: 100%; border-right: none; border-bottom: 1px solid var(--line); }
+          .main{ padding: 18px 16px 26px; }
+          h1{ font-size: 28px; }
+          .products{ grid-template-columns: 1fr; }
+          .need{ flex-direction: column; }
+          .need-ico{ width: 48px; height: 48px; border-radius: 16px; }
+        }
+      </style>
+    </head>
+    
+    <body>
+      <div class="app">
+        <!-- LEFT NAV -->
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="logo" aria-hidden="true"></div>
+            <span>Portal</span>
+          </div>
+    
+          <nav class="nav" aria-label="사이드바 메뉴">
+            <a href="#">
+              <div class="ico" aria-hidden="true">📝</div>
+              기록하기
+            </a>
+            <a href="#" class="active">
+              <div class="ico" aria-hidden="true">📊</div>
+              분석 리포트
+            </a>
+            <a href="#">
+              <div class="ico" aria-hidden="true">👤</div>
+              내 정보관리
+            </a>
+            <a href="#">
+              <div class="ico" aria-hidden="true">💬</div>
+              채팅상담
+            </a>
+            <a href="#">
+              <div class="ico" aria-hidden="true">⚙️</div>
+              설정
+            </a>
+          </nav>
+    
+          <div class="sidebar-footer">
+            Codef 건강검진/처방 데이터는<br/>
+            정책에 따라 일정 기간 후 삭제됩니다.
+          </div>
+        </aside>
+    
+        <!-- MAIN -->
+        <main class="main">
+          <div class="topbar">
+            <div class="title-wrap">
+              <h1>분석 리포트</h1>
+              <p class="subtitle">하나의 리포트 안에서 결과를 순서대로 확인할 수 있어요.</p>
+            </div>
+    
+            <div class="user-chip" role="group" aria-label="사용자">
+              <div class="avatar" aria-hidden="true"></div>
+              <div class="user-meta">
+                <b>hong1234@email.com</b>
+                <span>마지막 분석: 2026-02-27</span>
+              </div>
+            </div>
+          </div>
+    
+          <!-- ONE REPORT CARD -->
+          <div class="report-wrap">
+            <article class="report" aria-label="분석 결과 리포트">
+              <header class="report-header">
+                <div>
+                  <h2>건강 상태 분석 보고서</h2>
+                  <p>
+                    건강검진(CODEF) + 문진 + 현재 복용 영양제 정보를 종합해
+                    부족 영양군과 추천 제품을 제안합니다.
+                  </p>
+                </div>
+                <div class="badge">리포트 ID • RPT-20260227</div>
+              </header>
+    
+              <div class="report-body">
+    
+                <!-- Section 1: HEALTH CHECK - ONE SECTION (table style) -->
+                <section class="section">
+                  <div class="section-title">
+                    <h3>1) 건강검진 결과 (CODEF)</h3>
+                    <span>원문 항목을 한 섹션에서 확인</span>
+                  </div>
+    
+                  <table class="hc-table" aria-label="건강검진 결과">
+                    <thead>
+                      <tr>
+                        <th style="width: 22%;">항목</th>
+                        <th style="width: 38%;">결과</th>
+                        <th style="width: 18%;">참고치/기준</th>
+                        <th>코멘트</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><b>검진일</b></td>
+                        <td>2026-01-18</td>
+                        <td class="hc-muted">-</td>
+                        <td class="hc-muted">기관: ○○건강검진센터</td>
+                      </tr>
+    
+                      <tr>
+                        <td><b>종합 판정</b></td>
+                        <td><span class="hc-chip">주의 요망</span></td>
+                        <td class="hc-muted">-</td>
+                        <td class="hc-muted">생활습관 개선 권고</td>
+                      </tr>
+    
+                      <tr>
+                        <td><b>문진</b></td>
+                        <td>수면 부족 · 피로</td>
+                        <td class="hc-muted">-</td>
+                        <td class="hc-muted">자가 기입 문진 기반</td>
+                      </tr>
+    
+                      <!-- 예시: 실제 CODEF 검사항목 행들 -->
+                      <tr>
+                        <td><b>혈압</b></td>
+                        <td>128 / 86 mmHg</td>
+                        <td class="hc-muted">정상: &lt; 120/80</td>
+                        <td class="hc-muted">경계 수준. 염분/수면/운동 점검 권고</td>
+                      </tr>
+    
+                      <tr>
+                        <td><b>공복혈당</b></td>
+                        <td>103 mg/dL</td>
+                        <td class="hc-muted">정상: 70~99</td>
+                        <td class="hc-muted">경계. 식습관 조정 권고</td>
+                      </tr>
+    
+                      <tr>
+                        <td><b>항산화 관련 지표</b></td>
+                        <td>낮음</td>
+                        <td class="hc-muted">-</td>
+                        <td class="hc-muted">식이/보충 필요 가능</td>
+                      </tr>
+                    </tbody>
+                  </table>
+    
+                  <div class="actions">
+                    <button class="btn secondary" type="button">원문 상세 보기 ›</button>
+                    <button class="btn secondary" type="button">데이터 갱신하기 ›</button>
+                  </div>
+                </section>
+    
+                <!-- Section 2: NEED NUTRIENT - NO GRID, NO EXTRA BUTTONS -->
+                <section class="section">
+                  <div class="section-title">
+                    <h3>2) 부족 영양군 분석 결과</h3>
+                    <span>요약 문장으로 근거/주의 포함</span>
+                  </div>
+    
+                  <div class="need">
+                    <div class="need-ico" aria-hidden="true">💡</div>
+                    <div style="flex:1">
+                      <p class="need-title">비타민 C <b>1000mg</b> 필요</p>
+                      <p class="need-desc">
+                        건강검진(CODEF) 결과와 문진(피로/수면) 및 현재 복용 영양제 정보를 종합하여,
+                        부족 영양군과 필요 함량을 산출했습니다.
+                      </p>
+    
+                      <div class="summary-text">
+                        <div>
+                          <span class="muted">요약:</span>
+                          현재 등록된 복용 영양제 기준으로 비타민 C 섭취량은 <b>0mg/day</b>로 추정되며,
+                          개인 상태(피로/회복) 및 검진 요약 지표를 반영한 목표 섭취량 <b>1000mg/day</b> 대비
+                          <b>부족분 1000mg/day</b>가 계산되었습니다.
+                        </div>
+    
+                        <ul>
+                          <li><span class="muted">계산 근거:</span> 목표 섭취량(개인 상태 기반 권장치) − 현재 추정 섭취량(등록된 복용 영양제 성분/함량 합산)</li>
+                          <li><span class="muted">주의 사항:</span> 처방약 복용 중이거나 위장 민감한 경우, 고함량 복용 전 전문가 상담 및 분할 섭취를 권장합니다.</li>
+                        </ul>
+                      </div>
+    
+                      <div class="actions">
+                        <button class="btn" type="button">섭취 계획 세우기 ›</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+    
+                <!-- Section 3: PRODUCTS -->
+                <section class="section">
+                  <div class="section-title">
+                    <h3>3) 추천 상품</h3>
+                    <span>부족분(1000mg) 충족을 목표로 추천</span>
+                  </div>
+    
+                  <div class="products">
+                    <div class="p-card">
+                      <div class="p-thumb">상품 이미지</div>
+                      <p class="p-title">비타민C 1000mg (정)</p>
+                      <div class="p-meta">1정/일 • 단일 성분</div>
+                      <div class="p-row">
+                        <div class="price">₩ 12,900</div>
+                        <button class="btn mini" type="button">담기</button>
+                      </div>
+                    </div>
+    
+                    <div class="p-card">
+                      <div class="p-thumb">상품 이미지</div>
+                      <p class="p-title">비타민C + 아연 콤플렉스</p>
+                      <div class="p-meta">면역/회복 • 복합</div>
+                      <div class="p-row">
+                        <div class="price">₩ 18,500</div>
+                        <button class="btn mini" type="button">담기</button>
+                      </div>
+                    </div>
+    
+                    <div class="p-card">
+                      <div class="p-thumb">상품 이미지</div>
+                      <p class="p-title">리포좀 비타민C</p>
+                      <div class="p-meta">흡수 고려 • 캡슐</div>
+                      <div class="p-row">
+                        <div class="price">₩ 29,000</div>
+                        <button class="btn mini" type="button">담기</button>
+                      </div>
+                    </div>
+                  </div>
+    
+                  <div class="actions">
+                    <button class="btn secondary" type="button">추천 더 보기 ›</button>
+                    <button class="btn secondary" type="button">상담으로 확인 ›</button>
+                  </div>
+                </section>
+    
+              </div>
+            </article>
+          </div>
+        </main>
+      </div>
+    </body>
+    </html>
+    ```
