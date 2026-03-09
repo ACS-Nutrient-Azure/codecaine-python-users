@@ -1,9 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.core.config import settings
 from app.core.security import create_test_token
+from app.core.telemetry import setup_telemetry
 from app.api.v1.router import api_router
+
+setup_telemetry()
 
 app = FastAPI(
     title=settings.app_name,
@@ -22,6 +28,32 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+FastAPIInstrumentor.instrument_app(app)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": True,
+            "message": exc.detail,
+            "code": f"HTTP_{exc.status_code}",
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": True,
+            "message": "요청 데이터가 올바르지 않습니다.",
+            "code": "VALIDATION_ERROR",
+        },
+    )
 
 
 @app.get("/health", tags=["헬스체크"])

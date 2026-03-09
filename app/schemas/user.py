@@ -1,87 +1,81 @@
 from datetime import datetime, date
-from decimal import Decimal
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class UserProfileResponse(BaseModel):
     cognito_id: str
     email: str
-    name: str | None = None
-    birth_dt: date | None = None
-    gender: int | None = None
-    gender_display: str | None = None
-    phone: str | None = None
-    height: float | None = None
-    weight: float | None = None
-    allergies: list[str] = []
-    chron_diseases: list[str] = []
+    ans_birth_dt: date | None = None
+    ans_gender: int | None = None
+    ans_height: float | None = None
+    ans_weight: float | None = None
+    ans_allergies: str | None = None
+    ans_chron_diseases: str | None = None
+    ans_current_conditions: str | None = None
     created_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
+    updated_at: datetime | None = None
 
 
 class UserProfileUpdateRequest(BaseModel):
-    name: str | None = None
-    birth_dt: date | None = None
-    gender: int | None = None
-    phone: str | None = None
-    height: float | None = None
-    weight: float | None = None
-    allergies: list[str] | None = None
-    chron_diseases: list[str] | None = None
-
-    @field_validator("phone")
-    @classmethod
-    def phone_format(cls, v):
-        if v and len(v) > 20:
-            raise ValueError("전화번호는 20자 이하여야 합니다.")
-        return v
+    ans_birth_dt: date | None = None
+    ans_gender: int | None = None
+    ans_height: float | None = None
+    ans_weight: float | None = None
+    ans_allergies: str | None = None
+    ans_chron_diseases: str | None = None
+    ans_current_conditions: str | None = None
 
 
 class SupplementResponse(BaseModel):
-    current_id: int
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    ans_current_id: int = Field(validation_alias="current_id")
     cognito_id: str
-    product_name: str | None = None
-    serving_amount: int | None = None
-    serving_per_day: int | None = None
-    daily_total_amount: int | None = None
-    total_quantity: int | None = None
-    is_active: bool | None = None
-    purchased_dt: date | None = None
-    estimated_end_dt: date | None = None
-    start_dt: date | None = None
-    end_dt: date | None = None
+    ans_product_name: str | None = Field(None, validation_alias="product_name")
+    ans_serving_amount: int | None = Field(None, validation_alias="serving_amount")
+    ans_serving_per_day: int | None = Field(None, validation_alias="serving_per_day")
+    ans_daily_total_amount: int | None = Field(None, validation_alias="daily_total_amount")
+    ans_is_active: bool | None = Field(None, validation_alias="is_active")
+    ans_ingredients: dict | None = Field(None, validation_alias="ingredients")
     created_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+
+class SupplementListResponse(BaseModel):
+    supplements: list[SupplementResponse]
 
 
 class SupplementCreateRequest(BaseModel):
-    product_name: str
-    serving_amount: int | None = None
-    serving_per_day: int | None = None
-    daily_total_amount: int | None = None
-    total_quantity: int | None = None
-    is_active: bool = True
-    purchased_dt: date | None = None
-    estimated_end_dt: date | None = None
-    start_dt: date | None = None
-    end_dt: date | None = None
+    cognito_id: str
+    ans_product_name: str
+    ans_serving_amount: int | None = None
+    ans_serving_per_day: int | None = None
+    ans_daily_total_amount: int | None = None
+    ans_is_active: bool = True
+    ans_ingredients: dict | None = None
 
 
 class SupplementUpdateRequest(BaseModel):
-    product_name: str | None = None
-    serving_amount: int | None = None
-    serving_per_day: int | None = None
-    daily_total_amount: int | None = None
-    total_quantity: int | None = None
-    is_active: bool | None = None
-    purchased_dt: date | None = None
-    estimated_end_dt: date | None = None
-    start_dt: date | None = None
-    end_dt: date | None = None
+    ans_product_name: str | None = None
+    ans_serving_amount: int | None = None
+    ans_serving_per_day: int | None = None
+    ans_daily_total_amount: int | None = None
+    ans_is_active: bool | None = None
+    ans_ingredients: dict | None = None
+
+
+class SupplementStatusRequest(BaseModel):
+    ans_is_active: bool
+
+
+class UserUpdateResponse(BaseModel):
+    success: bool = True
+    message: str = "사용자 정보가 업데이트되었습니다."
+
+
+class SupplementCreateResponse(BaseModel):
+    ans_current_id: int
+    success: bool = True
+    message: str = "영양제가 추가되었습니다."
 
 
 class UserDeleteResponse(BaseModel):
