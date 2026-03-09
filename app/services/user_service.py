@@ -30,7 +30,7 @@ class UserService:
         result = await db.execute(
             select(UserProfile).where(UserProfile.cognito_id == cognito_id)
         )
-        profile = result.scalar_one_or_none()
+        profile = result.scalars().first()
         if not profile:
             profile = UserProfile(cognito_id=cognito_id)
             db.add(profile)

@@ -50,7 +50,8 @@ async function request(path: string, options: RequestInit = {}) {
   }
 
   if (res.status === 204) return null;
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }
 
 export const api = {
