@@ -3,15 +3,11 @@ import os
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.aws.xray import AwsXRayPropagator
-from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 
 def setup_telemetry() -> None:
@@ -51,8 +47,3 @@ def setup_telemetry() -> None:
     )
     metrics.set_meter_provider(meter_provider)
 
-    # Propagators: AWS X-Ray + W3C TraceContext
-    # OTEL_PROPAGATORS 환경변수(xray,tracecontext,baggage)와 동일한 순서
-    set_global_textmap(
-        CompositePropagator([AwsXRayPropagator(), TraceContextTextMapPropagator()])
-    )
