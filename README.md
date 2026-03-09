@@ -149,3 +149,93 @@ npm run dev
 토큰은 `localStorage`에 저장되며, 401 응답 시 자동으로 재발급합니다.
 
 > `APP_ENV=development` 일 때만 동작합니다.
+
+---
+
+## 트러블슈팅 히스토리
+
+### 2026-03-09
+
+#### 🐛 페이지 접속 시 "유효하지 않은 토큰" 오류
+
+**원인**
+`localStorage`에 이전에 저장된 만료/무효 토큰이 있으면 `getToken()`이 그것을 반환하고, `if (!getToken())` 조건이 `false`가 되어 새 토큰을 발급받지 않음. 해당 토큰으로 API 호출 시 백엔드에서 401 반환.
+
+**수정 내용**
+- `frontend/src/app/api.ts`: 401 응답 수신 시 `clearAuth()`로 localStorage 토큰 즉시 삭제
+- `frontend/src/app/pages/MyPage.tsx`: 401 에러 감지 시 토큰 재발급 후 자동 재시도
+
+```
+// 수정 전: 토큰이 있으면 무조건 사용
+if (!getToken()) { fetchDevToken() }
+
+// 수정 후: 401 발생 시 재발급
+catch (e) {
+  if (e.message === '401') { clearAuth() → fetchDevToken() → 재시도 }
+}
+```
+
+---
+
+#### 🐛 API-SPEC.md와 구현 불일치
+
+**원인**
+초기 구현이 API-SPEC.md와 다른 구조로 개발됨.
+
+**수정 내용 1 - API 경로 변경**
+
+| 구분 | 수정 전 | 수정 후 |
+|------|--------|--------|
+| prefix | `/api/v1` | `/api` |
+| 사용자 조회/수정 | `/users/me` | `/users/{cognito_id}` |
+| 영양제 목록 | `/users/me/supplements` | `/supplements?cognito_id=...` |
+| 영양제 상태 변경 | `PUT` + `is_active` 필드 | `PATCH /supplements/{id}/status` |
+
+**수정 내용 2 - 응답 필드명 변경**
+
+API-SPEC.md 기준 `ans_` prefix 적용.
+
+| 수정 전 | 수정 후 |
+|--------|--------|
+| `birth_dt`, `gender`, `height` | `ans_birth_dt`, `ans_gender`, `ans_height` |
+| `current_id`, `product_name` | `ans_current_id`, `ans_product_name` |
+| `allergies`, `chron_diseases` (배열) | `ans_allergies`, `ans_chron_diseases` (쉼표 구분 문자열) |
+
+**수정 내용 3 - 응답 형식 변경**
+
+| 엔드포인트 | 수정 전 | 수정 후 |
+|-----------|--------|--------|
+| `PUT /users/{cognito_id}` | 프로필 전체 반환 | `{ success, message }` |
+| `POST /supplements` | 영양제 전체 반환 | `{ ans_current_id, success, message }` |
+| 에러 응답 | `{ detail: "..." }` | `{ error: true, message, code }` |
+
+**수정 파일 목록**
+- `app/api/v1/router.py` — prefix 변경
+- `app/api/v1/endpoints/users.py` — 엔드포인트 경로/응답 변경, supplement_router 분리
+- `app/schemas/user.py` — `ans_` prefix 스키마, `UserUpdateResponse`, `SupplementCreateResponse` 추가
+- `app/services/user_service.py` — DB 필드 ↔ API 필드 매핑, `toggle_supplement_status` 추가
+- `app/main.py` — 글로벌 에러 핸들러 추가
+- `frontend/src/app/api.ts` — 경로 변경, `clearAuth` / `setCognitoId` 추가
+- `frontend/src/app/pages/MyPage.tsx` — 필드명 변경, PUT 후 GET 재조회
+- `frontend/src/app/components/MyPageEditModal.tsx` — 필드명 변경
+
+---
+
+#### 🔧 DB 연결 변경 (로컬 → 팀 원격 서버)
+
+**내용**
+로컬 Docker PostgreSQL에서 팀 공용 원격 서버(`13.125.230.157`)로 변경.
+
+**주의사항**
+비밀번호에 포함된 특수문자 `!`는 SQLAlchemy URL에서 `%21`로 URL 인코딩 필요.
+
+```env
+# 수정 전
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/mypage_db
+
+# 수정 후
+DATABASE_URL=postgresql+asyncpg://vitamin_user:vitamin_user123%21@13.125.230.157:5432/vitamin_user
+```
+
+**수정 파일**
+- `.env` — DATABASE_URL 변경

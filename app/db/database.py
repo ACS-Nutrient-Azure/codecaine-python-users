@@ -1,3 +1,4 @@
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -9,6 +10,8 @@ engine = create_async_engine(
     pool_size=5,
     max_overflow=10,
 )
+
+SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
 AsyncSessionLocal = async_sessionmaker(
     engine,

@@ -71,10 +71,12 @@ function StepIndicator({ current }: { current: 1 | 2 | 3 | 4 }) {
 /* ──────────────────────────── Step 1 — 정보 확인 ─────────────────────────── */
 function StepInfo({
   savedSuccess,
+  lastUpdated,
   onConfirm,
   onEditInfo,
 }: {
   savedSuccess: boolean;
+  lastUpdated: string | null;
   onConfirm: () => void;
   onEditInfo: () => void;
 }) {
@@ -125,7 +127,7 @@ function StepInfo({
           먼저 수정해주세요.
         </p>
         <p className="text-center text-gray-400 mb-8" style={{ fontSize: '12px' }}>
-          마지막 업데이트: 2024.04.10
+          마지막 업데이트: {lastUpdated ?? '-'}
         </p>
 
         {savedSuccess && (
@@ -303,27 +305,34 @@ type MedItem = {
 };
 
 function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () => void }) {
-  const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [gender, setGender] = useState<'male' | 'female' | ''>('');
   const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
-  const [examDate, setExamDate] = useState('2024-04-10');
+  const [examDate, setExamDate] = useState(new Date().toISOString().split('T')[0]);
+  const [note, setNote] = useState('');
+  const [examItems, setExamItems] = useState<ExamItem[]>([]);
+  const [meds, setMeds] = useState<MedItem[]>([]);
+  const [isAddingExam, setIsAddingExam] = useState(false);
+  const [isAddingMed, setIsAddingMed] = useState(false);
+  const [newExam, setNewExam] = useState({ name: '', value: '', unit: '', range: '' });
+  const [newMed, setNewMed] = useState({ name: '', dose: '', schedule: '' });
 
-  // API에서 프로필 데이터를 가져와서 건강정보 입력란에 반영
   useEffect(() => {
     async function loadProfile() {
       try {
-        const { api } = await import('../api');
-        const profile = await api.getProfile();
-        if (profile.gender === 0) setGender('male');
-        else if (profile.gender === 1) setGender('female');
-        if (profile.height) setHeight(String(profile.height));
-        if (profile.weight) setWeight(String(profile.weight));
-        if (profile.birth_dt) {
-          const birth = new Date(profile.birth_dt);
+        const { api, getCognitoId } = await import('../api');
+        const cognitoId = getCognitoId();
+        if (!cognitoId) return;
+        const profile = await api.getProfile(cognitoId);
+        if (profile.ans_gender === 0) setGender('male');
+        else if (profile.ans_gender === 1) setGender('female');
+        if (profile.ans_height) setHeight(String(profile.ans_height));
+        if (profile.ans_weight) setWeight(String(profile.ans_weight));
+        if (profile.ans_birth_dt) {
+          const birth = new Date(profile.ans_birth_dt);
           const now = new Date();
-          const calculatedAge = now.getFullYear() - birth.getFullYear();
-          setAge(String(calculatedAge));
+          setAge(String(now.getFullYear() - birth.getFullYear()));
         }
       } catch (e) {
         console.error('프로필 로딩 실패:', e);
@@ -331,25 +340,32 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
     }
     loadProfile();
   }, []);
-  const [note, setNote] = useState('');
-
-  const [examItems, setExamItems] = useState<ExamItem[]>([
-    { id: 1, name: '비타민 D', value: '18', unit: 'ng/mL', status: '부족', range: '30 - 100' },
-    { id: 2, name: '비타민 B12', value: '220', unit: 'pg/mL', status: '정상', range: '200 - 900' },
-    { id: 3, name: '철분 (Ferritin)', value: '45', unit: 'ng/mL', status: '정상', range: '30 - 200' },
-    { id: 4, name: '간 기능 (AST)', value: '22', unit: 'U/L', status: '정상', range: '10 - 40' },
-  ]);
-
-  const [meds, setMeds] = useState<MedItem[]>([
-    { id: 1, name: '고혈압 약', dose: '10mg', schedule: '1일 1회 (아침)' },
-    { id: 2, name: '콜레스테롤 약', dose: '20mg', schedule: '1일 1회 (저녁)' },
-    { id: 3, name: '위장 약', dose: '1정', schedule: '1일 2회 (아침/저녁)' },
-  ]);
 
   const statusColor = (s: ExamItem['status']) =>
     s === '정상' ? 'text-green-600 bg-green-50' : s === '부족' ? 'text-red-500 bg-red-50' : 'text-orange-500 bg-orange-50';
 
+  const removeExamItem = (id: number) => setExamItems(examItems.filter((e) => e.id !== id));
   const removeMed = (id: number) => setMeds(meds.filter((m) => m.id !== id));
+
+  const handleAddExam = () => {
+    if (!newExam.name.trim() || !newExam.value.trim()) return;
+    const numVal = parseFloat(newExam.value);
+    const [min, max] = newExam.range.split('-').map((v) => parseFloat(v.trim()));
+    const status: ExamItem['status'] =
+      !isNaN(min) && !isNaN(max)
+        ? numVal < min ? '부족' : numVal > max ? '과잉' : '정상'
+        : '정상';
+    setExamItems([...examItems, { id: Date.now(), ...newExam, status }]);
+    setNewExam({ name: '', value: '', unit: '', range: '' });
+    setIsAddingExam(false);
+  };
+
+  const handleAddMed = () => {
+    if (!newMed.name.trim()) return;
+    setMeds([...meds, { id: Date.now(), ...newMed }]);
+    setNewMed({ name: '', dose: '', schedule: '' });
+    setIsAddingMed(false);
+  };
 
   return (
     <div className="w-full max-w-5xl mx-auto">
@@ -452,16 +468,25 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
 
           {/* 주요 검사 항목 */}
           <div className="mt-6">
-            <h3 className="font-bold text-gray-900 mb-3" style={{ fontSize: '14px' }}>
-              주요 검사 항목
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-900" style={{ fontSize: '14px' }}>
+                주요 검사 항목
+              </h3>
+              <button
+                onClick={() => setIsAddingExam(true)}
+                className="flex items-center gap-1 text-blue-600 text-sm font-medium border border-blue-200 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                항목 추가
+              </button>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left text-gray-500 font-medium pb-2">항목</th>
                   <th className="text-left text-gray-500 font-medium pb-2">결과</th>
                   <th className="text-left text-gray-500 font-medium pb-2">기준치</th>
-                  <th className="text-gray-500 font-medium pb-2">수정</th>
+                  <th className="text-gray-500 font-medium pb-2">삭제</th>
                 </tr>
               </thead>
               <tbody>
@@ -469,23 +494,64 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
                   <tr key={item.id} className="border-b border-gray-50">
                     <td className="py-2.5 text-gray-700">{item.name}</td>
                     <td className="py-2.5">
-                      <span className="text-gray-900">
-                        {item.value} {item.unit}
-                      </span>
-                      <span
-                        className={`ml-2 px-1.5 py-0.5 rounded text-xs font-medium ${statusColor(item.status)}`}
-                      >
+                      <span className="text-gray-900">{item.value} {item.unit}</span>
+                      <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-medium ${statusColor(item.status)}`}>
                         {item.status}
                       </span>
                     </td>
                     <td className="py-2.5 text-gray-500">{item.range}</td>
                     <td className="py-2.5 text-center">
-                      <button className="text-gray-400 hover:text-blue-500 transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
+                      <button onClick={() => removeExamItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
                 ))}
+                {examItems.length === 0 && !isAddingExam && (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-gray-400 text-xs">
+                      검진 항목을 추가해주세요
+                    </td>
+                  </tr>
+                )}
+                {isAddingExam && (
+                  <tr className="border-b border-blue-100 bg-blue-50/30">
+                    <td className="py-2 pr-1">
+                      <input
+                        type="text" placeholder="항목명" value={newExam.name}
+                        onChange={(e) => setNewExam({ ...newExam, name: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-2 px-1">
+                      <div className="flex gap-1">
+                        <input
+                          type="text" placeholder="수치" value={newExam.value}
+                          onChange={(e) => setNewExam({ ...newExam, value: e.target.value })}
+                          className="w-14 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        <input
+                          type="text" placeholder="단위" value={newExam.unit}
+                          onChange={(e) => setNewExam({ ...newExam, unit: e.target.value })}
+                          className="w-14 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </div>
+                    </td>
+                    <td className="py-2 px-1">
+                      <input
+                        type="text" placeholder="예: 30 - 100" value={newExam.range}
+                        onChange={(e) => setNewExam({ ...newExam, range: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-2 pl-1">
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={handleAddExam} className="text-blue-500 hover:text-blue-700 text-xs font-medium">추가</button>
+                        <button onClick={() => { setIsAddingExam(false); setNewExam({ name: '', value: '', unit: '', range: '' }); }} className="text-gray-400 hover:text-gray-600 text-xs">취소</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -499,7 +565,10 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
                 <span className="text-lg">💊</span>
                 <h2 className="font-bold text-gray-900">현재 약물 복용 정보</h2>
               </div>
-              <button className="flex items-center gap-1 text-blue-600 text-sm font-medium border border-blue-200 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+              <button
+                onClick={() => setIsAddingMed(true)}
+                className="flex items-center gap-1 text-blue-600 text-sm font-medium border border-blue-200 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+              >
                 <Plus className="w-3.5 h-3.5" />
                 약물 추가
               </button>
@@ -522,9 +591,6 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
                     <td className="py-2.5 text-gray-600">{med.schedule}</td>
                     <td className="py-2.5">
                       <div className="flex items-center justify-center gap-2">
-                        <button className="text-gray-400 hover:text-blue-500 transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
                         <button
                           onClick={() => removeMed(med.id)}
                           className="text-gray-400 hover:text-red-500 transition-colors"
@@ -535,6 +601,44 @@ function StepHealth({ onConfirm, onBack }: { onConfirm: () => void; onBack: () =
                     </td>
                   </tr>
                 ))}
+                {meds.length === 0 && !isAddingMed && (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-gray-400 text-xs">
+                      복용 중인 약물을 추가해주세요
+                    </td>
+                  </tr>
+                )}
+                {isAddingMed && (
+                  <tr className="border-b border-blue-100 bg-blue-50/30">
+                    <td className="py-2 pr-1">
+                      <input
+                        type="text" placeholder="약품명" value={newMed.name}
+                        onChange={(e) => setNewMed({ ...newMed, name: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-2 px-1">
+                      <input
+                        type="text" placeholder="용량" value={newMed.dose}
+                        onChange={(e) => setNewMed({ ...newMed, dose: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-2 px-1">
+                      <input
+                        type="text" placeholder="예: 1일 1회 (아침)" value={newMed.schedule}
+                        onChange={(e) => setNewMed({ ...newMed, schedule: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-2 pl-1">
+                      <div className="flex gap-1 justify-center">
+                        <button onClick={handleAddMed} className="text-blue-500 hover:text-blue-700 text-xs font-medium">추가</button>
+                        <button onClick={() => { setIsAddingMed(false); setNewMed({ name: '', dose: '', schedule: '' }); }} className="text-gray-400 hover:text-gray-600 text-xs">취소</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
 
@@ -631,11 +735,32 @@ export function Recommendation() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState<Step>('info');
-  const [visible, setVisible] = useState(true); // for fade transition
+  const [visible, setVisible] = useState(true);
   const [consentChoice, setConsentChoice] = useState<ConsentChoice>('agree');
   const [showModal, setShowModal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    async function fetchLastUpdated() {
+      try {
+        const { api, getCognitoId } = await import('../api');
+        const cognitoId = getCognitoId();
+        if (!cognitoId) return;
+        const profile = await api.getProfile(cognitoId);
+        if (profile.updated_at) {
+          const d = new Date(profile.updated_at);
+          setLastUpdated(
+            `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
+          );
+        }
+      } catch (e) {
+        // 로딩 실패 시 무시
+      }
+    }
+    fetchLastUpdated();
+  }, []);
 
   /* ── fade transition helper ── */
   const fadeTo = (nextStep: Step) => {
@@ -705,6 +830,7 @@ export function Recommendation() {
         {step === 'info' && (
           <StepInfo
             savedSuccess={savedSuccess}
+            lastUpdated={lastUpdated}
             onConfirm={handleInfoConfirm}
             onEditInfo={handleOpenModal}
           />
