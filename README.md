@@ -221,6 +221,26 @@ API-SPEC.md 기준 `ans_` prefix 적용.
 
 ---
 
+#### 🐛 빈 응답 body 파싱 오류 (`Unexpected end of JSON input`)
+
+**원인**
+`DELETE /supplements/{id}` 등 응답 body가 없는 엔드포인트에서 `res.json()`을 호출하면 파싱 실패.
+
+**수정 내용**
+- `frontend/src/app/api.ts`: `res.json()` → `res.text()` 후 비어있으면 `null` 반환, 있으면 `JSON.parse()`
+
+---
+
+#### 🐛 `MultipleResultsFound` 오류 (500 에러)
+
+**원인**
+`user_profile` 테이블에 동일 `cognito_id`로 행이 여러 개 존재할 경우 `scalar_one_or_none()`이 예외 발생.
+
+**수정 내용**
+- `app/services/user_service.py`: `scalar_one_or_none()` → `scalars().first()`
+
+---
+
 #### 🔧 DB 연결 변경 (로컬 → 팀 원격 서버)
 
 **내용**

@@ -3,7 +3,7 @@ import { ChevronLeft, Bell, Share2, MoreVertical, X, Plus, ScanLine } from 'luci
 import { Switch } from '../components/ui/switch';
 import { api, setToken, setCognitoId, getCognitoId, clearAuth } from '../api';
 
-const DEV_COGNITO_ID = '이지수';
+const DEV_COGNITO_ID = 'test-user-001';
 
 interface Supplement {
   ans_current_id: number;
