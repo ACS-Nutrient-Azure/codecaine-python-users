@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, ChevronRight, MoreVertical } from 'lucide-react';
 import { Switch } from './ui/switch';
-import { api } from '../api';
+import { api, getCognitoId } from '../api';
 
 interface MyPageEditModalProps {
   isOpen: boolean;
@@ -10,31 +10,21 @@ interface MyPageEditModalProps {
 }
 
 interface Supplement {
-  current_id: number;
-  product_name: string;
-  serving_amount: number | null;
-  serving_per_day: number | null;
-  daily_total_amount: number | null;
-  is_active: boolean | null;
-}
-
-interface Profile {
-  birth_dt: string | null;
-  gender_display: string | null;
-  phone: string | null;
-  weight: number | null;
-  height: number | null;
-  allergies: string[];
-  chron_diseases: string[];
+  ans_current_id: number;
+  ans_product_name: string | null;
+  ans_serving_per_day: number | null;
+  ans_daily_total_amount: number | null;
+  ans_is_active: boolean | null;
 }
 
 const ICONS = ['🟠', '🟡', '🟢', '🔵', '🟣'];
 
 export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProps) {
   const [supplements, setSupplements] = useState<Supplement[]>([]);
-  const [allergies, setAllergies] = useState<string[]>([]);
-  const [conditions, setConditions] = useState<string[]>([]);
+  const [allergiesList, setAllergiesList] = useState<string[]>([]);
+  const [conditionsList, setConditionsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cognitoId, setCognitoIdState] = useState<string | null>(null);
 
   const [isAddingAllergy, setIsAddingAllergy] = useState(false);
   const [isAddingCondition, setIsAddingCondition] = useState(false);
@@ -42,33 +32,42 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
   const [newCondition, setNewCondition] = useState('');
 
   const [userInfo, setUserInfo] = useState({
-    birthdate: '',
-    gender: '',
-    phone: '',
-    weight: '',
-    height: '',
+    ans_birth_dt: '',
+    ans_gender: '',
+    ans_weight: '',
+    ans_height: '',
   });
 
-  // 모달이 열릴 때마다 API에서 최신 데이터를 가져옴
   useEffect(() => {
     if (!isOpen) return;
     async function fetchData() {
       setLoading(true);
       try {
+        const id = getCognitoId();
+        if (!id) return;
+        setCognitoIdState(id);
+
         const [profileData, supplementsData] = await Promise.all([
-          api.getProfile(),
-          api.getSupplements(),
+          api.getProfile(id),
+          api.getSupplements(id),
         ]);
         setUserInfo({
-          birthdate: profileData.birth_dt || '',
-          gender: profileData.gender_display || '',
-          phone: profileData.phone || '',
-          weight: profileData.weight?.toString() || '',
-          height: profileData.height?.toString() || '',
+          ans_birth_dt: profileData.ans_birth_dt || '',
+          ans_gender: profileData.ans_gender !== null ? String(profileData.ans_gender) : '',
+          ans_weight: profileData.ans_weight?.toString() || '',
+          ans_height: profileData.ans_height?.toString() || '',
         });
-        setAllergies(profileData.allergies || []);
-        setConditions(profileData.chron_diseases || []);
-        setSupplements(supplementsData);
+        setAllergiesList(
+          profileData.ans_allergies
+            ? profileData.ans_allergies.split(',').map((a: string) => a.trim()).filter(Boolean)
+            : []
+        );
+        setConditionsList(
+          profileData.ans_chron_diseases
+            ? profileData.ans_chron_diseases.split(',').map((c: string) => c.trim()).filter(Boolean)
+            : []
+        );
+        setSupplements(supplementsData.supplements ?? []);
       } catch (e: any) {
         console.error('데이터 로딩 실패:', e.message);
       } finally {
@@ -80,21 +79,21 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
 
   const toggleSupplement = async (id: number, currentActive: boolean) => {
     try {
-      await api.updateSupplement(id, { is_active: !currentActive });
+      const updated = await api.toggleSupplementStatus(id, !currentActive);
       setSupplements(supplements.map(s =>
-        s.current_id === id ? { ...s, is_active: !currentActive } : s
+        s.ans_current_id === id ? { ...s, ans_is_active: updated.ans_is_active } : s
       ));
     } catch (e: any) {
       alert(e.message);
     }
   };
 
-  const removeAllergy = (a: string) => setAllergies(allergies.filter(x => x !== a));
-  const removeCondition = (c: string) => setConditions(conditions.filter(x => x !== c));
+  const removeAllergy = (a: string) => setAllergiesList(allergiesList.filter(x => x !== a));
+  const removeCondition = (c: string) => setConditionsList(conditionsList.filter(x => x !== c));
 
   const handleAddAllergy = () => {
     if (newAllergy.trim()) {
-      setAllergies([...allergies, newAllergy.trim()]);
+      setAllergiesList([...allergiesList, newAllergy.trim()]);
       setNewAllergy('');
       setIsAddingAllergy(false);
     }
@@ -102,27 +101,26 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
 
   const handleAddCondition = () => {
     if (newCondition.trim()) {
-      setConditions([...conditions, newCondition.trim()]);
+      setConditionsList([...conditionsList, newCondition.trim()]);
       setNewCondition('');
       setIsAddingCondition(false);
     }
   };
 
   const handleSave = async () => {
+    if (!cognitoId) return;
     try {
-      const genderMap: Record<string, number> = { '남성': 0, '여성': 1 };
       const data: any = {
-        allergies,
-        chron_diseases: conditions,
+        ans_allergies: allergiesList.join(', '),
+        ans_chron_diseases: conditionsList.join(', '),
       };
-      if (userInfo.phone) data.phone = userInfo.phone;
-      if (userInfo.weight) data.weight = parseFloat(userInfo.weight);
-      if (userInfo.height) data.height = parseFloat(userInfo.height);
-      if (userInfo.birthdate) data.birth_dt = userInfo.birthdate;
-      if (userInfo.gender in genderMap) data.gender = genderMap[userInfo.gender];
+      if (userInfo.ans_weight) data.ans_weight = parseFloat(userInfo.ans_weight);
+      if (userInfo.ans_height) data.ans_height = parseFloat(userInfo.ans_height);
+      if (userInfo.ans_birth_dt) data.ans_birth_dt = userInfo.ans_birth_dt;
+      if (userInfo.ans_gender !== '') data.ans_gender = parseInt(userInfo.ans_gender);
 
-      await api.updateProfile(data);
-      onSave();
+      const result = await api.updateProfile(cognitoId, data);
+      if (result?.success) onSave();
     } catch (e: any) {
       alert('저장 실패: ' + e.message);
     }
@@ -165,20 +163,20 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
                 </div>
                 <div className="space-y-3">
                   {supplements.map((supplement, idx) => (
-                    <div key={supplement.current_id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+                    <div key={supplement.ans_current_id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">
                           {ICONS[idx % ICONS.length]}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900 text-sm">{supplement.product_name}</p>
-                          <p className="text-xs text-gray-500">1일 {supplement.daily_total_amount ?? '-'}알 ({supplement.serving_per_day ?? '-'}회)</p>
+                          <p className="font-medium text-gray-900 text-sm">{supplement.ans_product_name}</p>
+                          <p className="text-xs text-gray-500">1일 {supplement.ans_daily_total_amount ?? '-'}알 ({supplement.ans_serving_per_day ?? '-'}회)</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch
-                          checked={supplement.is_active ?? false}
-                          onCheckedChange={() => toggleSupplement(supplement.current_id, supplement.is_active ?? false)}
+                          checked={supplement.ans_is_active ?? false}
+                          onCheckedChange={() => toggleSupplement(supplement.ans_current_id, supplement.ans_is_active ?? false)}
                         />
                         <button className="text-gray-400 hover:text-gray-600">
                           <MoreVertical className="w-4 h-4" />
@@ -195,14 +193,13 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
                 <h3 className="font-bold text-gray-900 mb-4">건강 정보</h3>
                 <div className="space-y-3">
                   {[
-                    { label: '생년월일', key: 'birthdate', type: 'text' },
-                    { label: '성별', key: 'gender', type: 'text' },
-                    { label: '연락처', key: 'phone', type: 'text' },
-                    { label: '체중 (kg)', key: 'weight', type: 'number' },
-                    { label: '키 (cm)', key: 'height', type: 'number' },
+                    { label: '생년월일', key: 'ans_birth_dt', type: 'text' },
+                    { label: '성별 (0=남 1=여)', key: 'ans_gender', type: 'number' },
+                    { label: '체중 (kg)', key: 'ans_weight', type: 'number' },
+                    { label: '키 (cm)', key: 'ans_height', type: 'number' },
                   ].map((field) => (
                     <div key={field.key} className="flex items-center gap-3">
-                      <label className="text-sm text-gray-600 w-24 flex-shrink-0">{field.label}</label>
+                      <label className="text-sm text-gray-600 w-32 flex-shrink-0">{field.label}</label>
                       <input
                         type={field.type}
                         value={userInfo[field.key as keyof typeof userInfo]}
@@ -223,13 +220,13 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {allergies.map((a) => (
+                  {allergiesList.map((a) => (
                     <div key={a} className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg border border-red-200 text-sm">
                       <span>{a}</span>
                       <button onClick={() => removeAllergy(a)} className="hover:text-red-800"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
-                  {allergies.length === 0 && <p className="text-gray-400 text-sm">등록된 알러지가 없습니다.</p>}
+                  {allergiesList.length === 0 && <p className="text-gray-400 text-sm">등록된 알러지가 없습니다.</p>}
                 </div>
                 {isAddingAllergy && (
                   <div className="mt-3 flex gap-2">
@@ -252,13 +249,13 @@ export function MyPageEditModal({ isOpen, onClose, onSave }: MyPageEditModalProp
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {conditions.map((c) => (
+                  {conditionsList.map((c) => (
                     <div key={c} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg border border-orange-200 text-sm">
                       <span>{c}</span>
                       <button onClick={() => removeCondition(c)} className="hover:text-orange-800"><X className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
-                  {conditions.length === 0 && <p className="text-gray-400 text-sm">등록된 기저질환이 없습니다.</p>}
+                  {conditionsList.length === 0 && <p className="text-gray-400 text-sm">등록된 기저질환이 없습니다.</p>}
                 </div>
                 {isAddingCondition && (
                   <div className="mt-3 flex gap-2">

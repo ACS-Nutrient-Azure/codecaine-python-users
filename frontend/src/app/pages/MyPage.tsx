@@ -1,37 +1,40 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Bell, Share2, MoreVertical, X, Plus, ScanLine } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
-import { api, setToken, getToken } from '../api';
+import { api, setToken, setCognitoId, getCognitoId, clearAuth } from '../api';
+
+const DEV_COGNITO_ID = 'test-user-001';
 
 interface Supplement {
-  current_id: number;
-  product_name: string;
-  serving_amount: number | null;
-  serving_per_day: number | null;
-  daily_total_amount: number | null;
-  total_quantity: number | null;
-  is_active: boolean | null;
-  purchased_dt: string | null;
-  estimated_end_dt: string | null;
-  start_dt: string | null;
-  end_dt: string | null;
+  ans_current_id: number;
+  ans_product_name: string | null;
+  ans_serving_amount: number | null;
+  ans_serving_per_day: number | null;
+  ans_daily_total_amount: number | null;
+  ans_is_active: boolean | null;
+  ans_ingredients: Record<string, number> | null;
 }
 
 interface Profile {
   cognito_id: string;
   email: string;
-  name: string | null;
-  birth_dt: string | null;
-  gender: number | null;
-  gender_display: string | null;
-  phone: string | null;
-  height: number | null;
-  weight: number | null;
-  allergies: string[];
-  chron_diseases: string[];
+  ans_birth_dt: string | null;
+  ans_gender: number | null;
+  ans_height: number | null;
+  ans_weight: number | null;
+  ans_allergies: string | null;
+  ans_chron_diseases: string | null;
+  ans_current_conditions: string | null;
 }
 
 const ICONS = ['🟠', '🟡', '🟢', '🔵', '🟣'];
+
+async function fetchDevToken(): Promise<string> {
+  const tokenData = await api.getDevToken(DEV_COGNITO_ID);
+  setToken(tokenData.access_token);
+  setCognitoId(DEV_COGNITO_ID);
+  return DEV_COGNITO_ID;
+}
 
 export function MyPage() {
   const [supplements, setSupplements] = useState<Supplement[]>([]);
@@ -50,35 +53,47 @@ export function MyPage() {
   const [newCondition, setNewCondition] = useState('');
 
   const [editedUserInfo, setEditedUserInfo] = useState({
-    birth_dt: '',
-    gender_display: '',
-    phone: '',
-    weight: '',
-    height: '',
+    ans_birth_dt: '',
+    ans_gender: '',
+    ans_weight: '',
+    ans_height: '',
   });
+
+  async function loadData(cognitoId: string) {
+    const [profileData, supplementsData] = await Promise.all([
+      api.getProfile(cognitoId),
+      api.getSupplements(cognitoId),
+    ]);
+    setProfile(profileData);
+    setSupplements(supplementsData.supplements ?? []);
+    setEditedUserInfo({
+      ans_birth_dt: profileData.ans_birth_dt || '',
+      ans_gender: profileData.ans_gender !== null ? String(profileData.ans_gender) : '',
+      ans_weight: profileData.ans_weight?.toString() || '',
+      ans_height: profileData.ans_height?.toString() || '',
+    });
+  }
 
   useEffect(() => {
     async function init() {
       try {
-        if (!getToken()) {
-          const tokenData = await api.getDevToken('test-user-001');
-          setToken(tokenData.access_token);
+        let cognitoId = getCognitoId();
+        if (!cognitoId) {
+          cognitoId = await fetchDevToken();
         }
-        const [profileData, supplementsData] = await Promise.all([
-          api.getProfile(),
-          api.getSupplements(),
-        ]);
-        setProfile(profileData);
-        setSupplements(supplementsData);
-        setEditedUserInfo({
-          birth_dt: profileData.birth_dt || '',
-          gender_display: profileData.gender_display || '',
-          phone: profileData.phone || '',
-          weight: profileData.weight?.toString() || '',
-          height: profileData.height?.toString() || '',
-        });
+        await loadData(cognitoId);
       } catch (e: any) {
-        setError(e.message);
+        if (e.message === '401') {
+          // 토큰 만료 시 재발급 후 재시도
+          try {
+            const cognitoId = await fetchDevToken();
+            await loadData(cognitoId);
+          } catch (retryErr: any) {
+            setError(retryErr.message);
+          }
+        } else {
+          setError(e.message);
+        }
       } finally {
         setLoading(false);
       }
@@ -88,9 +103,9 @@ export function MyPage() {
 
   const toggleSupplement = async (id: number, currentActive: boolean) => {
     try {
-      await api.updateSupplement(id, { is_active: !currentActive });
+      const updated = await api.toggleSupplementStatus(id, !currentActive);
       setSupplements(supplements.map(s =>
-        s.current_id === id ? { ...s, is_active: !currentActive } : s
+        s.ans_current_id === id ? { ...s, ans_is_active: updated.ans_is_active } : s
       ));
     } catch (e: any) {
       alert(e.message);
@@ -101,52 +116,62 @@ export function MyPage() {
     setSelectedSupplement(selectedSupplement === id ? null : id);
   };
 
+  const allergiesList = profile?.ans_allergies
+    ? profile.ans_allergies.split(',').map(a => a.trim()).filter(Boolean)
+    : [];
+
+  const conditionsList = profile?.ans_chron_diseases
+    ? profile.ans_chron_diseases.split(',').map(c => c.trim()).filter(Boolean)
+    : [];
+
   const removeAllergy = async (allergy: string) => {
     if (!profile) return;
-    const updated = profile.allergies.filter(a => a !== allergy);
-    await api.updateProfile({ allergies: updated });
-    setProfile({ ...profile, allergies: updated });
+    const updated = allergiesList.filter(a => a !== allergy).join(', ');
+    await api.updateProfile(profile.cognito_id, { ans_allergies: updated });
+    const refreshed = await api.getProfile(profile.cognito_id);
+    setProfile(refreshed);
   };
 
   const removeCondition = async (condition: string) => {
     if (!profile) return;
-    const updated = profile.chron_diseases.filter(c => c !== condition);
-    await api.updateProfile({ chron_diseases: updated });
-    setProfile({ ...profile, chron_diseases: updated });
+    const updated = conditionsList.filter(c => c !== condition).join(', ');
+    await api.updateProfile(profile.cognito_id, { ans_chron_diseases: updated });
+    const refreshed = await api.getProfile(profile.cognito_id);
+    setProfile(refreshed);
   };
 
   const handleAddAllergy = async () => {
     if (!newAllergy.trim() || !profile) return;
-    const updated = [...profile.allergies, newAllergy.trim()];
-    await api.updateProfile({ allergies: updated });
-    setProfile({ ...profile, allergies: updated });
+    const updated = [...allergiesList, newAllergy.trim()].join(', ');
+    await api.updateProfile(profile.cognito_id, { ans_allergies: updated });
+    const refreshed = await api.getProfile(profile.cognito_id);
+    setProfile(refreshed);
     setNewAllergy('');
     setIsAddingAllergy(false);
   };
 
   const handleAddCondition = async () => {
     if (!newCondition.trim() || !profile) return;
-    const updated = [...profile.chron_diseases, newCondition.trim()];
-    await api.updateProfile({ chron_diseases: updated });
-    setProfile({ ...profile, chron_diseases: updated });
+    const updated = [...conditionsList, newCondition.trim()].join(', ');
+    await api.updateProfile(profile.cognito_id, { ans_chron_diseases: updated });
+    const refreshed = await api.getProfile(profile.cognito_id);
+    setProfile(refreshed);
     setNewCondition('');
     setIsAddingCondition(false);
   };
 
   const handleSaveUserInfo = async () => {
     if (!profile) return;
-    const genderMap: Record<string, number> = { '남성': 0, '여성': 1 };
-    const data: any = {
-      phone: editedUserInfo.phone || undefined,
-      weight: editedUserInfo.weight ? parseFloat(editedUserInfo.weight) : undefined,
-      height: editedUserInfo.height ? parseFloat(editedUserInfo.height) : undefined,
-    };
-    if (editedUserInfo.birth_dt) data.birth_dt = editedUserInfo.birth_dt;
-    if (editedUserInfo.gender_display in genderMap) data.gender = genderMap[editedUserInfo.gender_display];
+    const data: any = {};
+    if (editedUserInfo.ans_birth_dt) data.ans_birth_dt = editedUserInfo.ans_birth_dt;
+    if (editedUserInfo.ans_gender !== '') data.ans_gender = parseInt(editedUserInfo.ans_gender);
+    if (editedUserInfo.ans_weight) data.ans_weight = parseFloat(editedUserInfo.ans_weight);
+    if (editedUserInfo.ans_height) data.ans_height = parseFloat(editedUserInfo.ans_height);
 
     try {
-      const updated = await api.updateProfile(data);
-      setProfile(updated);
+      await api.updateProfile(profile.cognito_id, data);
+      const refreshed = await api.getProfile(profile.cognito_id);
+      setProfile(refreshed);
       setIsEditingUser(false);
     } catch (e: any) {
       alert(e.message);
@@ -156,23 +181,24 @@ export function MyPage() {
   const handleCancelEditUser = () => {
     if (profile) {
       setEditedUserInfo({
-        birth_dt: profile.birth_dt || '',
-        gender_display: profile.gender_display || '',
-        phone: profile.phone || '',
-        weight: profile.weight?.toString() || '',
-        height: profile.height?.toString() || '',
+        ans_birth_dt: profile.ans_birth_dt || '',
+        ans_gender: profile.ans_gender !== null ? String(profile.ans_gender) : '',
+        ans_weight: profile.ans_weight?.toString() || '',
+        ans_height: profile.ans_height?.toString() || '',
       });
     }
     setIsEditingUser(false);
   };
 
   const filteredSupplements = supplements.filter(s => {
-    if (filter === 'active') return s.is_active;
-    if (filter === 'inactive') return !s.is_active;
+    if (filter === 'active') return s.ans_is_active;
+    if (filter === 'inactive') return !s.ans_is_active;
     return true;
   });
 
-  const selected = supplements.find(s => s.current_id === selectedSupplement);
+  const selected = supplements.find(s => s.ans_current_id === selectedSupplement);
+
+  const genderDisplay = profile?.ans_gender === 0 ? '남성' : profile?.ans_gender === 1 ? '여성' : '-';
 
   if (loading) {
     return (
@@ -188,8 +214,11 @@ export function MyPage() {
         <div className="text-center">
           <p className="text-red-500 text-lg mb-2">오류 발생</p>
           <p className="text-gray-600">{error}</p>
-          <button className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg" onClick={() => window.location.reload()}>
-            새로고침
+          <button
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg"
+            onClick={() => { clearAuth(); window.location.reload(); }}
+          >
+            다시 시도
           </button>
         </div>
       </div>
@@ -231,19 +260,19 @@ export function MyPage() {
 
             <div className="space-y-3">
               {filteredSupplements.map((supplement, idx) => (
-                <div key={supplement.current_id} onClick={() => handleSupplementClick(supplement.current_id)}
-                  className={`border rounded-xl p-4 transition-colors cursor-pointer ${selectedSupplement === supplement.current_id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}>
+                <div key={supplement.ans_current_id} onClick={() => handleSupplementClick(supplement.ans_current_id)}
+                  className={`border rounded-xl p-4 transition-colors cursor-pointer ${selectedSupplement === supplement.ans_current_id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-2xl">
                         {ICONS[idx % ICONS.length]}
                       </div>
-                      <h3 className="font-medium text-gray-900">{supplement.product_name}</h3>
+                      <h3 className="font-medium text-gray-900">{supplement.ans_product_name}</h3>
                     </div>
                     <div className="flex items-center gap-3">
                       <div onClick={(e) => e.stopPropagation()}>
-                        <Switch checked={supplement.is_active ?? false}
-                          onCheckedChange={() => toggleSupplement(supplement.current_id, supplement.is_active ?? false)} />
+                        <Switch checked={supplement.ans_is_active ?? false}
+                          onCheckedChange={() => toggleSupplement(supplement.ans_current_id, supplement.ans_is_active ?? false)} />
                       </div>
                       <button className="text-gray-400 hover:text-gray-600" onClick={(e) => e.stopPropagation()}>
                         <MoreVertical className="w-5 h-5" />
@@ -251,13 +280,9 @@ export function MyPage() {
                     </div>
                   </div>
                   <div className="space-y-1 text-sm text-gray-600">
-                    <p>1일 복용량: {supplement.daily_total_amount ?? '-'}알</p>
-                    <p>1일 {supplement.serving_per_day ?? '-'}회 (1회 {supplement.serving_amount ?? '-'}알)</p>
-                    {supplement.total_quantity && <p className="text-gray-500">총 {supplement.total_quantity}정</p>}
+                    <p>1일 복용량: {supplement.ans_daily_total_amount ?? '-'}알</p>
+                    <p>1일 {supplement.ans_serving_per_day ?? '-'}회 (1회 {supplement.ans_serving_amount ?? '-'}알)</p>
                   </div>
-                  {supplement.purchased_dt && (
-                    <div className="mt-3"><p className="text-xs text-gray-500">구매일: {supplement.purchased_dt}</p></div>
-                  )}
                 </div>
               ))}
               {filteredSupplements.length === 0 && <p className="text-center text-gray-400 py-8">영양제가 없습니다.</p>}
@@ -271,22 +296,30 @@ export function MyPage() {
                 <button className="p-2 hover:bg-gray-100 rounded-lg" onClick={() => setSelectedSupplement(null)}>
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <h2 className="text-xl font-bold text-gray-900">{selected.product_name}</h2>
+                <h2 className="text-xl font-bold text-gray-900">{selected.ans_product_name}</h2>
               </div>
               <div className="space-y-4">
                 {[
-                  ['1일 복용량', `${selected.daily_total_amount ?? '-'}알`],
-                  ['복용 횟수', `1일 ${selected.serving_per_day ?? '-'}회`],
-                  ['1회 복용량', `${selected.serving_amount ?? '-'}알`],
-                  ['총 수량', `${selected.total_quantity ?? '-'}정`],
-                  ['섭취 기간', `${selected.purchased_dt ?? '-'} ~ ${selected.estimated_end_dt ?? '-'}`],
-                  ['상태', selected.is_active ? '복용중' : '중단'],
+                  ['1일 복용량', `${selected.ans_daily_total_amount ?? '-'}알`],
+                  ['복용 횟수', `1일 ${selected.ans_serving_per_day ?? '-'}회`],
+                  ['1회 복용량', `${selected.ans_serving_amount ?? '-'}알`],
+                  ['상태', selected.ans_is_active ? '복용중' : '중단'],
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-center justify-between py-3 border-b border-gray-100">
                     <span className="text-gray-600">{label}</span>
-                    <span className={`font-medium ${label === '상태' && selected.is_active ? 'text-green-600' : label === '상태' ? 'text-gray-400' : 'text-gray-900'}`}>{value}</span>
+                    <span className={`font-medium ${label === '상태' && selected.ans_is_active ? 'text-green-600' : label === '상태' ? 'text-gray-400' : 'text-gray-900'}`}>{value}</span>
                   </div>
                 ))}
+                {selected.ans_ingredients && Object.keys(selected.ans_ingredients).length > 0 && (
+                  <div className="py-3 border-b border-gray-100">
+                    <span className="text-gray-600">주요 성분</span>
+                    <div className="mt-2 space-y-1">
+                      {Object.entries(selected.ans_ingredients).map(([name, amount]) => (
+                        <p key={name} className="text-sm text-gray-700">{name}: {amount}mg</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -299,18 +332,22 @@ export function MyPage() {
                 </div>
                 <div className="space-y-4">
                   {[
-                    { label: '생년월일', value: profile?.birth_dt, editKey: 'birth_dt' },
-                    { label: '성별', value: profile?.gender_display, editKey: 'gender_display' },
-                    { label: '연락처', value: profile?.phone, editKey: 'phone' },
-                    { label: '체중', value: profile?.weight ? `${profile.weight} kg` : '-', editKey: 'weight' },
-                    { label: '키', value: profile?.height ? `${profile.height} cm` : '-', editKey: 'height' },
+                    { label: '이메일', value: profile?.email, editKey: null },
+                    { label: '생년월일', value: profile?.ans_birth_dt, editKey: 'ans_birth_dt' },
+                    { label: '성별', value: genderDisplay, editKey: 'ans_gender' },
+                    { label: '체중', value: profile?.ans_weight ? `${profile.ans_weight} kg` : '-', editKey: 'ans_weight' },
+                    { label: '키', value: profile?.ans_height ? `${profile.ans_height} cm` : '-', editKey: 'ans_height' },
                   ].map(item => (
-                    <div key={item.editKey} className="flex items-center gap-2">
+                    <div key={item.label} className="flex items-center gap-2">
                       <span className="text-gray-600 w-20">• {item.label}</span>
-                      {isEditingUser ? (
-                        <input type="text" value={editedUserInfo[item.editKey as keyof typeof editedUserInfo]}
-                          onChange={(e) => setEditedUserInfo({ ...editedUserInfo, [item.editKey]: e.target.value })}
-                          className="border border-gray-300 px-2 py-1 rounded flex-1" />
+                      {isEditingUser && item.editKey ? (
+                        <input
+                          type={item.editKey === 'ans_gender' ? 'number' : 'text'}
+                          value={editedUserInfo[item.editKey as keyof typeof editedUserInfo]}
+                          onChange={(e) => setEditedUserInfo({ ...editedUserInfo, [item.editKey!]: e.target.value })}
+                          placeholder={item.editKey === 'ans_gender' ? '0=남성 1=여성' : ''}
+                          className="border border-gray-300 px-2 py-1 rounded flex-1"
+                        />
                       ) : (
                         <span className="text-gray-900">{item.value || '-'}</span>
                       )}
@@ -332,13 +369,13 @@ export function MyPage() {
                   <button className="text-blue-500 hover:text-blue-600" onClick={() => setIsAddingAllergy(true)}><Plus className="w-5 h-5" /></button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {profile?.allergies.map((a) => (
+                  {allergiesList.map((a) => (
                     <div key={a} className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg border border-red-200">
                       <span>{a}</span>
                       <button onClick={() => removeAllergy(a)} className="hover:text-red-700"><X className="w-4 h-4" /></button>
                     </div>
                   ))}
-                  {(!profile?.allergies || profile.allergies.length === 0) && <p className="text-gray-400 text-sm">등록된 알러지가 없습니다.</p>}
+                  {allergiesList.length === 0 && <p className="text-gray-400 text-sm">등록된 알러지가 없습니다.</p>}
                 </div>
                 {isAddingAllergy && (
                   <div className="mt-4 flex gap-2">
@@ -358,13 +395,13 @@ export function MyPage() {
                   <button className="text-blue-500 hover:text-blue-600" onClick={() => setIsAddingCondition(true)}><Plus className="w-5 h-5" /></button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {profile?.chron_diseases.map((c) => (
+                  {conditionsList.map((c) => (
                     <div key={c} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg border border-orange-200">
                       <span>{c}</span>
                       <button onClick={() => removeCondition(c)} className="hover:text-orange-700"><X className="w-4 h-4" /></button>
                     </div>
                   ))}
-                  {(!profile?.chron_diseases || profile.chron_diseases.length === 0) && <p className="text-gray-400 text-sm">등록된 기저질환이 없습니다.</p>}
+                  {conditionsList.length === 0 && <p className="text-gray-400 text-sm">등록된 기저질환이 없습니다.</p>}
                 </div>
                 {isAddingCondition && (
                   <div className="mt-4 flex gap-2">
