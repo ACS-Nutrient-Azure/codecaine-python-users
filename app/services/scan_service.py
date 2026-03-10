@@ -13,16 +13,17 @@ from app.schemas.user import SupplementScanConfidence, SupplementScanParsedResul
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB
 
-# 정규식 패턴 (한국어 영양성분표 기준)
+# 정규식 패턴 (한국어/영어 영양성분표 기준)
 _PRODUCT_PATTERNS = [
     re.compile(r"제품명\s*[:：]\s*(.+)"),
     re.compile(r"품\s*명\s*[:：]\s*(.+)"),
+    re.compile(r"product\s*name\s*[:：]\s*(.+)", re.I),
 ]
 
 _SERVING_AMOUNT_PATTERNS = [
     re.compile(r"1회\s*섭취량\s*[:：]?\s*(\d+)\s*(?:정|캡슐|알|tablet|capsule)", re.I),
     re.compile(r"1회\s*분량\s*[:：]?\s*(\d+)\s*(?:정|캡슐|알)", re.I),
-    re.compile(r"serving\s*size\s*[:：]?\s*(\d+)", re.I),
+    re.compile(r"serving\s*size\s*[:：]?\s*(\d+)\s*(?:softgel|capsule|tablet|cap|tab|pill)?", re.I),
 ]
 
 _SERVING_PER_DAY_PATTERNS = [
@@ -30,19 +31,24 @@ _SERVING_PER_DAY_PATTERNS = [
     re.compile(r"하루\s*(\d+)\s*회"),
     re.compile(r"1일\s*(\d+)\s*회"),
     re.compile(r"daily\s*intake\s*[:：]?\s*(\d+)", re.I),
+    re.compile(r"(?:take|use)\s*(\d+)\s*(?:softgel|capsule|tablet)s?\s*(?:daily|per day)", re.I),
 ]
 
-# 성분명 mg량 패턴 (2~30자 한글/영문 + 숫자 + 단위)
+# 성분명 mg량 패턴 (2~60자 한글/영문 + 숫자 + 단위)
 _INGREDIENT_PATTERN = re.compile(
-    r"^([가-힣a-zA-Z0-9·（）()\-\s·]{2,30}?)\s+"
-    r"(\d+(?:\.\d+)?)\s*"
+    r"^([가-힣a-zA-Z0-9·（）()\-\s%,·]{2,60}?)\s+"
+    r"(\d+(?:[,.]\d+)?)\s*"
     r"(mg|μg|mcg|IU|g|㎍|㎎)\b"
 )
 
-# 노이즈 라인 패턴 (표 헤더, 열량 등 제외 대상)
+# 노이즈 라인 패턴 (표 헤더, 일반 영양소 등 제외)
 _NOISE_PATTERNS = [
     re.compile(r"^(성분명|1회분량|1일섭취량|%영양성분기준치|구분)$"),
     re.compile(r"(열량|칼로리|나트륨|탄수화물|당류|단백질|지방|포화지방|트랜스지방)"),
+    re.compile(r"^(calories|total fat|saturated fat|trans fat|cholesterol|sodium|total carb|dietary fiber|total sugar|protein)\b", re.I),
+    re.compile(r"^(supplement facts|nutrition facts|serving size|servings per|amount per|%\s*daily value|daily value)", re.I),
+    re.compile(r"^\*?\s*percent daily", re.I),
+    re.compile(r"^\d+\s*$"),  # 숫자만 있는 줄 (열량값 등)
 ]
 
 
@@ -97,6 +103,26 @@ def _parse_text(raw_text: str) -> tuple[SupplementScanParsedResult, SupplementSc
                 break
         if product_name:
             break
+
+    # 영어 라벨: "Supplement Facts" 다음 첫 번째 성분군 이름을 제품명 후보로
+    if not product_name:
+        _sf_header = re.compile(r"supplement\s*facts", re.I)
+        _concentrate_pattern = re.compile(
+            r"^([A-Za-z0-9][A-Za-z0-9\s\-]+(?:oil|extract|concentrate|complex|blend|acid|powder|root|leaf|bark|seed))\b",
+            re.I,
+        )
+        after_header = False
+        for line in lines:
+            if _sf_header.search(line):
+                after_header = True
+                continue
+            if after_header:
+                m = _concentrate_pattern.match(line)
+                if m:
+                    product_name = m.group(1).strip()
+                    product_confidence = 0.5
+                    break
+
     if not product_name:
         warnings.append("제품명을 인식하지 못했습니다. 직접 입력해주세요.")
 
@@ -129,20 +155,47 @@ def _parse_text(raw_text: str) -> tuple[SupplementScanParsedResult, SupplementSc
     elif serving_amount is not None:
         daily_total = serving_amount
 
-    # 성분 파싱
+    # 성분 파싱 (단일행: "성분명 840mg" / 복수행: "성분명\n840 mg" 모두 처리)
+    _amount_only = re.compile(r"^(\d+(?:[,.]\d+)?)\s*(mg|μg|mcg|IU|g|㎍|㎎)\b", re.I)
+    _name_only = re.compile(r"^([가-힣a-zA-Z0-9·（）()\-\s%,·]{2,60}?)$")
+
     ingredients: dict[str, float] = {}
+    pending_name: str | None = None
+
     for line in lines:
         if _is_noise_line(line):
+            pending_name = None
             continue
+
+        # 단일행 패턴 먼저 시도
         m = _INGREDIENT_PATTERN.match(line)
         if m:
             name = m.group(1).strip()
-            amount = float(m.group(2))
+            amount = float(m.group(2).replace(",", ""))
             unit = m.group(3)
-            # μg/mcg → mg 변환 (1000:1)
             if unit in ("μg", "mcg", "㎍"):
                 amount = round(amount / 1000, 4)
             ingredients[name] = amount
+            pending_name = None
+            continue
+
+        # 복수행: 이전 줄이 이름이었고 이번 줄이 수치인 경우
+        m_amt = _amount_only.match(line)
+        if m_amt and pending_name:
+            amount = float(m_amt.group(1).replace(",", ""))
+            unit = m_amt.group(2)
+            if unit in ("μg", "mcg", "㎍"):
+                amount = round(amount / 1000, 4)
+            ingredients[pending_name] = amount
+            pending_name = None
+            continue
+
+        # 이름만 있는 줄: 다음 줄을 기다림
+        m_name = _name_only.match(line)
+        if m_name and len(line.strip()) >= 3:
+            pending_name = line.strip()
+        else:
+            pending_name = None
 
     ingredient_confidence = 0.0
     if len(ingredients) >= 5:
