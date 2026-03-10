@@ -10,7 +10,7 @@ permissions:
 
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: svc-mypage
+  ECR_REPOSITORY: codecaine-python-mypage 
   ECS_CLUSTER: supplement-rec-dev
   ECS_SERVICE: supplement-rec-dev
 

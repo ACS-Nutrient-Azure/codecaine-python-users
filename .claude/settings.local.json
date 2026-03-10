@@ -20,7 +20,11 @@
       "Bash(netstat:*)",
       "Bash(tasklist:*)",
       "Bash(cmd.exe:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(cd \"C:/Users/YPGN/Documents/GitHub/codecaine-python-mypage\" && gh run list --limit 5)",
+      "Bash(where gh:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" run list --repo ACS-Nutrients/codecaine-python-mypage --limit 5 2>/dev/null || \\\\\n\"/c/Users/YPGN/AppData/Local/GitHubDesktop/app-3.4.9/resources/app/git/mingw64/bin/gh.exe\" run list 2>/dev/null || \\\\\npowershell.exe -Command \"gh run list --repo ACS-Nutrients/codecaine-python-mypage --limit 5\" 2>/dev/null)",
+      "Bash(aws sts:*)"
     ]
   }
 }
