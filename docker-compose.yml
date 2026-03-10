@@ -1,6 +1,15 @@
 version: "3.9"
 
 services:
+  frontend:
+    build: ../source-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://mypage-service:8000
+    depends_on:
+      - mypage-service
+
   mypage-service:
     build: .
     ports:
