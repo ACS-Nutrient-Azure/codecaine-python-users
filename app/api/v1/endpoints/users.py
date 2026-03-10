@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user_id
@@ -13,8 +13,10 @@ from app.schemas.user import (
     SupplementCreateResponse,
     SupplementUpdateRequest,
     SupplementStatusRequest,
+    SupplementScanResponse,
     UserDeleteResponse,
 )
+from app.services.scan_service import scan_supplement_image
 from app.services.user_service import user_service
 
 # --- Users Router ---
@@ -79,6 +81,24 @@ async def create_supplement(
     """영양제 추가"""
     created = await user_service.create_supplement(db, data.cognito_id, data)
     return SupplementCreateResponse(ans_current_id=created.ans_current_id)
+
+
+@supplement_router.post("/scan", response_model=SupplementScanResponse)
+async def scan_supplement(
+    image: UploadFile = File(..., description="영양제 성분표 이미지 (JPEG/PNG, 최대 5MB)"),
+    cognito_id: str = Form(...),
+    _: str = Depends(get_current_user_id),
+):
+    """영양제 성분표 이미지를 AWS Textract로 분석하여 성분 정보 추출"""
+    # MIME 타입 검사
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if image.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="JPEG, PNG, WEBP 형식의 이미지만 지원합니다.",
+        )
+    image_bytes = await image.read()
+    return await scan_supplement_image(image_bytes)
 
 
 @supplement_router.put("/{ans_current_id}", response_model=SupplementResponse)

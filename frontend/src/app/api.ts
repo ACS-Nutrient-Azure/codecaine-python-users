@@ -54,6 +54,27 @@ async function request(path: string, options: RequestInit = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function requestFormData(path: string, formData: FormData) {
+  const headers: Record<string, string> = {};
+  if (_token) {
+    headers["Authorization"] = `Bearer ${_token}`;
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (res.status === 401) {
+    clearAuth();
+    throw new Error("401");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export const api = {
   // Auth (dev only)
   getDevToken: (cognitoId: string) =>
@@ -81,4 +102,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ ans_is_active: isActive }),
     }),
+  scanSupplement: (imageFile: File, cognitoId: string) => {
+    const formData = new FormData();
+    formData.append("image", imageFile);
+    formData.append("cognito_id", cognitoId);
+    return requestFormData("/supplements/scan", formData);
+  },
 };

@@ -174,6 +174,49 @@ PATCH /api/supplements/{ans_current_id}/status
 }
 ```
 
+### 9-1. 영양제 성분표 스캔 (OCR)
+```
+POST /api/supplements/scan
+Content-Type: multipart/form-data
+```
+**Request (Form Data):**
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `image` | File | 필수 | 영양제 성분표 이미지 (JPEG/PNG/WEBP, 최대 5MB) |
+| `cognito_id` | string | 필수 | 사용자 식별자 |
+
+**Response:**
+```json
+{
+  "success": true,
+  "raw_text": "AWS Textract 추출 원본 텍스트",
+  "parsed": {
+    "ans_product_name": "종근당 오메가3",
+    "ans_serving_amount": 2,
+    "ans_serving_per_day": 1,
+    "ans_daily_total_amount": 2,
+    "ans_ingredients": {
+      "오메가3지방산": 1000,
+      "EPA": 480,
+      "DHA": 360
+    }
+  },
+  "confidence": {
+    "product_name": 0.85,
+    "serving_info": 0.72,
+    "ingredients": 0.91
+  },
+  "warnings": []
+}
+```
+**에러:**
+- `400 INVALID_IMAGE` - 지원하지 않는 이미지 형식
+- `400 IMAGE_TOO_LARGE` - 5MB 초과
+- `400 TEXT_NOT_FOUND` - 텍스트 추출 실패
+- `503 TEXTRACT_UNAVAILABLE` - AWS Textract 서비스 오류
+
+**사용 페이지:** `MyPage.tsx` (스캔하기 버튼)
+
 ---
 
 ## 📊 분석 (Analysis Service) ⭐ 핵심

@@ -10,7 +10,17 @@
       "Bash(curl:*)",
       "Bash(npm install:*)",
       "Bash(ls:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Read(//c/Users/YPGN/AppData/Local/Programs/Python//**)",
+      "Read(//c/Users/YPGN/.local/share/**)",
+      "Bash(/c/Users/YPGN/AppData/Local/Programs/Python/Python314/python.exe:*)",
+      "Bash(/c/Users/YPGN/Documents/GitHub/svc-mypage/.venv/Scripts/pip.exe install:*)",
+      "Bash(/c/Users/YPGN/AppData/Local/Programs/Python/Python314/Scripts/pytest.exe:*)",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell.exe:*)"
     ]
   }
 }

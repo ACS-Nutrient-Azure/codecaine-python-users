@@ -25,6 +25,7 @@
 | PUT | `/api/supplements/{ans_current_id}` | 영양제 수정 | 영양제 정보 |
 | DELETE | `/api/supplements/{ans_current_id}` | 영양제 삭제 | 204 No Content |
 | PATCH | `/api/supplements/{ans_current_id}/status` | 영양제 활성화/비활성화 | 영양제 정보 |
+| POST | `/api/supplements/scan` | 성분표 이미지 OCR 스캔 | 파싱된 영양제 정보 |
 | GET | `/health` | 헬스체크 | `{ status: "ok" }` |
 | GET | `/dev/token/{cognito_id}` | 개발용 JWT 토큰 발급 | `{ access_token }` |
 
@@ -68,7 +69,8 @@ svc-mypage/
 │   ├── schemas/
 │   │   └── user.py               # Pydantic 요청/응답 스키마 (ans_ prefix)
 │   ├── services/
-│   │   └── user_service.py       # 비즈니스 로직 (DB 필드 ↔ API 필드 매핑)
+│   │   ├── user_service.py       # 비즈니스 로직 (DB 필드 ↔ API 필드 매핑)
+│   │   └── scan_service.py       # AWS Textract 호출 + 한국어 성분표 파싱
 │   └── main.py                   # FastAPI 앱 진입점 + 글로벌 에러 핸들러
 ├── frontend/                     # 프론트엔드 (React + Vite)
 │   ├── src/app/
@@ -77,12 +79,17 @@ svc-mypage/
 │   │   │   ├── MyPage.tsx        # 내 정보 관리 (API 연동)
 │   │   │   └── ...
 │   │   └── components/
-│   │       ├── MyPageEditModal.tsx # 내 정보 수정 모달
+│   │       ├── MyPageEditModal.tsx    # 내 정보 수정 모달
+│   │       ├── SupplementScanModal.tsx # 성분표 OCR 스캔 모달 (4단계)
 │   │       └── ...
 │   ├── vite.config.ts            # Vite 설정 (/api, /dev 프록시 → localhost:8000)
 │   └── package.json
 ├── Dockerfile
 ├── docker-compose.yml            # 백엔드 컨테이너
+├── tests/                        # 백엔드 테스트
+│   ├── conftest.py               # pytest 설정 (OTel stub, TestClient)
+│   ├── test_scan_service.py      # 파싱 로직 단위 테스트 (35개)
+│   └── test_scan_endpoint.py     # 스캔 엔드포인트 통합 테스트 (19개)
 ├── requirements.txt
 └── .env                          # 환경변수 (git 제외)
 ```
@@ -149,6 +156,28 @@ npm run dev
 토큰은 `localStorage`에 저장되며, 401 응답 시 자동으로 재발급합니다.
 
 > `APP_ENV=development` 일 때만 동작합니다.
+
+## OCR 스캔 기능 (AWS Textract)
+
+영양제 성분표 이미지를 업로드하면 AWS Textract로 텍스트를 추출하고, 영양제 정보를 자동 파싱하여 등록 폼에 채워줍니다.
+
+**사용 흐름**
+1. 마이페이지 → 영양제 섹션 → **스캔하기** 버튼 클릭
+2. 이미지 업로드 (파일 선택 or 카메라 촬영, JPEG/PNG/WEBP, 최대 5MB)
+3. 분석 완료 후 파싱 결과 확인 및 수정
+4. 저장 → 영양제 목록에 자동 추가
+
+**필요한 .env 설정**
+```env
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=ap-northeast-2
+```
+
+**필요한 IAM 권한**
+```json
+{ "Action": ["textract:DetectDocumentText"], "Effect": "Allow", "Resource": "*" }
+```
 
 ---
 
@@ -259,3 +288,27 @@ DATABASE_URL=postgresql+asyncpg://vitamin_user:vitamin_user123%21@13.125.230.157
 
 **수정 파일**
 - `.env` — DATABASE_URL 변경
+
+---
+
+### 2026-03-10
+
+#### ✨ AWS Textract OCR 영양제 스캔 기능 추가
+
+**내용**
+마이페이지 영양제 섹션의 "스캔하기" 버튼에 AWS Textract 기반 OCR 기능 연결.
+사진으로 촬영한 영양제 성분표에서 제품명, 복용량, 성분 정보를 자동 추출.
+
+**추가/수정 파일**
+- `app/services/scan_service.py` (신규) — Textract 호출 + 한국어 성분표 정규식 파싱
+- `app/schemas/user.py` — `SupplementScanParsedResult`, `SupplementScanConfidence`, `SupplementScanResponse` 추가
+- `app/api/v1/endpoints/users.py` — `POST /api/supplements/scan` 엔드포인트 추가
+- `frontend/src/app/api.ts` — `requestFormData()` + `scanSupplement()` 추가
+- `frontend/src/app/components/SupplementScanModal.tsx` (신규) — 4단계 스캔 모달
+- `frontend/src/app/pages/MyPage.tsx` — 스캔 버튼에 모달 연결
+- `API-SPEC.md` — `9-1. 영양제 성분표 스캔 (OCR)` 섹션 추가
+- `tests/test_scan_service.py` (신규) — 파싱 로직 단위 테스트 35개
+- `tests/test_scan_endpoint.py` (신규) — 엔드포인트 통합 테스트 19개
+
+**버그 수정**
+- `_INGREDIENT_PATTERN` 정규식에서 숫자 문자 클래스 누락으로 "오메가3지방산", "비타민B12" 등 숫자 포함 성분명이 파싱되지 않던 문제 수정

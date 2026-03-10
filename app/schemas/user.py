@@ -80,3 +80,27 @@ class SupplementCreateResponse(BaseModel):
 
 class UserDeleteResponse(BaseModel):
     message: str = "회원 탈퇴가 완료되었습니다."
+
+
+class SupplementScanParsedResult(BaseModel):
+    """파싱된 영양제 정보"""
+    ans_product_name: str | None = None
+    ans_serving_amount: int | None = None
+    ans_serving_per_day: int | None = None
+    ans_daily_total_amount: int | None = None
+    ans_ingredients: dict[str, float] | None = None
+
+
+class SupplementScanConfidence(BaseModel):
+    """각 필드 파싱 신뢰도 0.0~1.0"""
+    product_name: float = 0.0
+    serving_info: float = 0.0
+    ingredients: float = 0.0
+
+
+class SupplementScanResponse(BaseModel):
+    success: bool = True
+    raw_text: str
+    parsed: SupplementScanParsedResult
+    confidence: SupplementScanConfidence
+    warnings: list[str] = []

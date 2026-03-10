@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, Bell, Share2, MoreVertical, X, Plus, ScanLine } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import { api, setToken, setCognitoId, getCognitoId, clearAuth } from '../api';
+import { SupplementScanModal } from '../components/SupplementScanModal';
 
 const DEV_COGNITO_ID = 'test-user-001';
 
@@ -44,6 +45,7 @@ export function MyPage() {
 
   const [selectedSupplement, setSelectedSupplement] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
 
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [isAddingAllergy, setIsAddingAllergy] = useState(false);
@@ -252,7 +254,10 @@ export function MyPage() {
                     </button>
                   ))}
                 </div>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm hover:bg-gray-100">
+                <button
+                  onClick={() => setIsScanModalOpen(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm hover:bg-gray-100"
+                >
                   <ScanLine className="w-4 h-4" /><span>스캔하기</span>
                 </button>
               </div>
@@ -417,6 +422,15 @@ export function MyPage() {
           )}
         </div>
       </div>
+      <SupplementScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        onSaved={() => {
+          setIsScanModalOpen(false);
+          const cognitoId = getCognitoId();
+          if (cognitoId) loadData(cognitoId);
+        }}
+      />
     </div>
   );
 }
