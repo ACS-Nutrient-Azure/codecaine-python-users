@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_port: int = 8000
 
-    database_url: str
+    database_url: str = "postgresql+asyncpg://vitamin_user:vitamin_user123!@cdci-prd-users-cluster.cluster-cfm0iecq8xen.ap-northeast-2.rds.amazonaws.com:5432/vitamin_user"
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
