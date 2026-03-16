@@ -7,7 +7,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from app.core.config import settings
 from app.core.security import create_test_token
 from app.core.telemetry import setup_telemetry
-from app.api.v1.router import api_router
+from app.api.router import api_router
 
 setup_telemetry()
 

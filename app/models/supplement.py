@@ -9,7 +9,7 @@ from app.db.database import Base
 
 class CurrentSupplement(Base):
     """1-7. 복용중인 영양제 테이블"""
-    __tablename__ = "1-7. 복용중인 영양제"
+    __tablename__ = "current_supplements"
 
     current_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
@@ -29,9 +29,10 @@ class CurrentSupplement(Base):
 
 
 class IntakeSupplement(Base):
-    """intake_supplements 테이블"""
+    """intake_supplements 테이블 (vitamin_history DB — DMS로 current_supplements에서 동기화)"""
     __tablename__ = "intake_supplements"
 
+    current_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     cognito_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     itk_product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     itk_serving_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)

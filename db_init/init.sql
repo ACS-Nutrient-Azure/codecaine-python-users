@@ -88,8 +88,16 @@ INSERT INTO "Users" ("cognito_id", "email", "created_at")
 VALUES ('test-user-001', 'testuser@example.com', NOW())
 ON CONFLICT ("cognito_id") DO NOTHING;
 
+INSERT INTO "Users" ("cognito_id", "email", "created_at")
+VALUES ('dev-user-001', 'dev@test.com', NOW())
+ON CONFLICT ("cognito_id") DO NOTHING;
+
 INSERT INTO "user_profile" ("cognito_id", "name", "birth_dt", "gender", "phone", "height", "weight", "allergies", "chron_diseases")
 VALUES ('test-user-001', '테스트유저', '1990-01-10', 0, '010-1234-5678', 175.0, 72.0, '땅콩,새우', '고혈압,당뇨')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO "user_profile" ("cognito_id", "name", "birth_dt", "gender", "phone", "height", "weight", "allergies", "chron_diseases")
+VALUES ('dev-user-001', '개발자', '1990-01-01', 0, '010-0000-0000', 170.0, 65.0, '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO "1-7. 복용중인 영양제" ("cognito_id", "product_name", "serving_amount", "serving_per_day", "daily_total_amount", "total_quantity", "is_active", "purchased_dt", "estimated_end_dt")

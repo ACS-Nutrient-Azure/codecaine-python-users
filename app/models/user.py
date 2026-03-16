@@ -9,7 +9,7 @@ from app.db.database import Base
 
 class User(Base):
     """Users 테이블 - 인증 서비스(Cognito)와 연동"""
-    __tablename__ = "Users"
+    __tablename__ = "users"
 
     cognito_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)

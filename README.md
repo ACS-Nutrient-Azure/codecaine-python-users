@@ -1,196 +1,189 @@
-# 마이페이지 마이크로서비스 (백엔드)
+# MyPage 서비스
 
-영양제 추천 서비스(MSA)의 마이페이지 담당 백엔드 서비스입니다.
-프론트엔드는 [source-frontend](https://github.com/ACS-Nutrients/source-frontend) 레포를 사용합니다.
+사용자 프로필, 영양제 목록 관리, 영양제 성분표 OCR 스캔을 담당하는 FastAPI 마이크로서비스.
+AWS Cognito JWT를 검증하여 인증하며, 첫 로그인 시 users 테이블에 자동 등록한다.
+
+---
 
 ## 기술 스택
 
 | 구분 | 기술 |
 |------|------|
-| **백엔드** | Python 3.11, FastAPI, SQLAlchemy 2.0 (async) |
-| **DB** | PostgreSQL 16 |
-| **인증** | JWT (AWS Cognito 연동 구조) |
-| **OCR** | AWS Textract (한국어/영어 성분표 지원) |
-| **컨테이너** | Docker, Docker Compose |
+| 언어 | Python 3.11 |
+| 프레임워크 | FastAPI 0.111 |
+| ORM | SQLAlchemy 2.0 (async) + asyncpg |
+| DB | PostgreSQL (`vitamin_user` DB) |
+| 인증 | AWS Cognito (RS256 JWT via JWKS) |
+| OCR | AWS Textract |
+| 모니터링 | OpenTelemetry |
 
-## 실행 방법
+---
 
-### Docker (프론트 + 백엔드 + DB 전체)
-
-```bash
-# 두 레포를 같은 디렉토리에 클론
-git clone https://github.com/ACS-Nutrients/codecaine-python-mypage
-git clone https://github.com/ACS-Nutrients/source-frontend
-
-cd codecaine-python-mypage
-docker compose up -d --build
-```
-
-| 서비스 | URL |
-|--------|-----|
-| 프론트엔드 | http://localhost:5173 |
-| 마이페이지 | http://localhost:5173/my-page |
-| API 문서 (Swagger) | http://localhost:8000/docs |
-
-### 백엔드 로컬 직접 실행
+## 실행
 
 ```bash
+cd services/mypage
+
+# 가상환경 생성
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+# 의존성 설치
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+
+# 환경변수 설정
+cp .env.example .env
+# .env 값 입력
+
+# 서버 시작
+uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
-## 환경변수 (.env)
+---
+
+## 환경변수 (`.env`)
 
 ```env
-DATABASE_URL=postgresql+asyncpg://...
-JWT_SECRET_KEY=...
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
+# PostgreSQL
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@<host>:5432/vitamin_user
+
+# AWS Cognito (JWT 검증용)
+COGNITO_USER_POOL_ID=<User Pool ID>
+COGNITO_CLIENT_ID=<App Client ID>
 AWS_REGION=ap-northeast-2
+
+# AWS (Textract OCR 사용 시)
+AWS_ACCESS_KEY_ID=<IAM Access Key>
+AWS_SECRET_ACCESS_KEY=<IAM Secret Key>
+
+# CORS
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-**AWS IAM 권한 (OCR 스캔 기능 필요)**
-```json
-{ "Action": ["textract:DetectDocumentText"], "Effect": "Allow", "Resource": "*" }
-```
-
-## API 목록
-
-| Method | 엔드포인트 | 설명 |
-|--------|-----------|------|
-| GET | `/api/users/{cognito_id}` | 마이페이지 정보 조회 |
-| PUT | `/api/users/{cognito_id}` | 사용자 정보 수정 |
-| DELETE | `/api/users/{cognito_id}` | 회원 탈퇴 |
-| GET | `/api/supplements?cognito_id=...` | 영양제 목록 조회 |
-| POST | `/api/supplements` | 영양제 추가 |
-| PUT | `/api/supplements/{id}` | 영양제 수정 |
-| DELETE | `/api/supplements/{id}` | 영양제 삭제 |
-| PATCH | `/api/supplements/{id}/status` | 활성화/비활성화 |
-| POST | `/api/supplements/scan` | 성분표 이미지 OCR 스캔 |
-| GET | `/health` | 헬스체크 |
-| GET | `/dev/token/{cognito_id}` | 개발용 JWT 발급 |
-
-> 모든 API는 `Authorization: Bearer {token}` 헤더 필요
+---
 
 ## 프로젝트 구조
 
 ```
-codecaine-python-mypage/
-├── app/
-│   ├── api/v1/
-│   │   ├── router.py             # API 라우터 (prefix: /api)
-│   │   └── endpoints/
-│   │       └── users.py          # 유저 + 영양제 엔드포인트
-│   ├── core/
-│   │   ├── config.py             # 환경변수 (pydantic-settings)
-│   │   └── security.py           # JWT 인증/토큰 생성
-│   ├── db/database.py            # async DB 엔진/세션
-│   ├── models/
-│   │   ├── user.py               # Users, UserProfile 모델
-│   │   └── supplement.py         # 복용 영양제 모델
-│   ├── schemas/user.py           # Pydantic 스키마 (ans_ prefix)
-│   ├── services/
-│   │   ├── user_service.py       # 비즈니스 로직
-│   │   └── scan_service.py       # AWS Textract + 성분표 파싱
-│   └── main.py
-├── tests/
-│   ├── conftest.py
-│   ├── test_scan_service.py
-│   └── test_scan_endpoint.py
-├── Dockerfile
-├── docker-compose.yml            # frontend(source-frontend) + backend + db
-├── requirements.txt
-└── .env
+app/
+├── main.py                    # FastAPI 앱 + CORS + 라우터 등록
+├── api/v1/
+│   ├── router.py              # 라우터 집계
+│   └── endpoints/
+│       └── users.py           # User + Supplement 엔드포인트
+├── core/
+│   ├── config.py              # pydantic-settings 환경변수
+│   └── security.py            # JWT 검증 (Cognito RS256 / dev HS256 fallback)
+├── db/
+│   └── database.py            # async SQLAlchemy 엔진 + 세션
+├── models/
+│   ├── user.py                # User, UserProfile ORM 모델
+│   └── supplement.py          # CurrentSupplement ORM 모델
+├── schemas/
+│   └── user.py                # Pydantic 요청/응답 스키마
+└── services/
+    ├── user_service.py        # 비즈니스 로직 (유저/영양제 CRUD)
+    └── scan_service.py        # Textract OCR 호출
 ```
-
-## docker-compose 구성
-
-```
-frontend (source-frontend)  → http://localhost:5173
-mypage-service (FastAPI)    → http://localhost:8000
-db (PostgreSQL 16)          → 내부 전용
-```
-
-프론트 → 백엔드 API 프록시는 Vite dev server가 처리 (`/api`, `/dev` → `mypage-service:8000`).
-
-## 인증 (개발 모드)
-
-`APP_ENV=development`일 때 `/dev/token/{cognito_id}` 엔드포인트로 JWT 자동 발급.
-프론트엔드 접속 시 `test-user-001`로 자동 로그인됩니다.
-
-## OCR 스캔 기능
-
-영양제 성분표 사진 → AWS Textract → 자동 파싱 → 등록 폼 자동 완성.
-
-- 한국어/영어 라벨 모두 지원
-- 성분명·수치가 다른 줄에 있는 멀티라인 OCR 포맷 처리
-- 제품명, 1회 복용량, 성분 목록 자동 추출
-
-**사용 흐름**: 마이페이지 → 영양제 → 스캔하기 → 이미지 업로드 → 결과 확인/수정 → 저장
-
-## 응답 필드명 규칙
-
-API-SPEC.md 기준 `ans_` prefix 사용.
-
-| API 필드명 | DB 컬럼명 |
-|-----------|----------|
-| `ans_birth_dt` | `birth_dt` |
-| `ans_gender` | `gender` |
-| `ans_height` / `ans_weight` | `height` / `weight` |
-| `ans_current_id` | `current_id` |
-| `ans_product_name` | `product_name` |
-| `ans_ingredients` | `ingredients` (JSONB) |
 
 ---
 
-## 트러블슈팅 히스토리
+## API 엔드포인트
 
-### 2026-03-09
+### 공통
 
-#### 🐛 페이지 접속 시 "유효하지 않은 토큰" 오류
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| `GET` | `/health` | ❌ | 헬스체크 |
+| `GET` | `/dev/token/{cognito_id}` | ❌ | 개발용 JWT 발급 (development 환경 전용) |
 
-`localStorage`에 만료 토큰이 있으면 갱신 안 됨 → 401 응답 시 `clearAuth()` + 자동 재발급으로 수정.
+### 사용자 정보
 
-#### 🐛 API-SPEC.md와 구현 불일치
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| `GET` | `/api/users/{cognito_id}` | ✅ | 프로필 조회 (없으면 자동 생성) |
+| `PUT` | `/api/users/{cognito_id}` | ✅ | 프로필 수정 |
+| `DELETE` | `/api/users/{cognito_id}` | ✅ | 회원 탈퇴 |
 
-| 구분 | 수정 전 | 수정 후 |
-|------|--------|--------|
-| prefix | `/api/v1` | `/api` |
-| 사용자 조회 | `/users/me` | `/users/{cognito_id}` |
-| 영양제 목록 | `/users/me/supplements` | `/supplements?cognito_id=...` |
-| 상태 변경 | `PUT` + `is_active` | `PATCH /supplements/{id}/status` |
+### 영양제 관리
 
-#### 🐛 빈 응답 body JSON 파싱 오류
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| `GET` | `/api/users/supplements` | ✅ | 영양제 목록 조회 |
+| `POST` | `/api/users/supplements` | ✅ | 영양제 추가 |
+| `PUT` | `/api/users/supplements/{id}` | ✅ | 영양제 수정 |
+| `DELETE` | `/api/users/supplements/{id}` | ✅ | 영양제 삭제 |
+| `PATCH` | `/api/users/supplements/{id}/status` | ✅ | 복용 여부 토글 |
+| `POST` | `/api/users/supplements/scan` | ✅ | 성분표 이미지 OCR 분석 |
 
-`DELETE` 등 204 응답에서 `res.json()` 호출 → `res.text()` 후 비어있으면 `null` 반환으로 수정.
+#### `GET /api/users/supplements`
 
-#### 🐛 `MultipleResultsFound` (500 에러)
+**Query Params** `cognito_id`, `is_active` (optional: `true` / `false`)
 
-`user_profile` 중복 행 → `scalar_one_or_none()` → `scalars().first()`로 수정.
+```json
+{
+  "supplements": [
+    {
+      "current_id": 1,
+      "cognito_id": "string",
+      "product_name": "string",
+      "serving_amount": 2,
+      "serving_per_day": 1,
+      "is_active": true
+    }
+  ]
+}
+```
+
+#### `POST /api/users/supplements/scan`
+
+**Request** `multipart/form-data`
+- `image`: 이미지 파일 (JPEG / PNG / WEBP, 최대 5MB)
+- `cognito_id`: string
+
+```json
+{
+  "ingredients": [
+    { "name": "비타민C", "amount": 500, "unit": "mg" }
+  ]
+}
+```
 
 ---
 
-### 2026-03-10
+## DB 스키마
 
-#### ✨ AWS Textract OCR 영양제 스캔 기능 추가
+`db-sql/userTable.sql` 참고.
 
-성분표 이미지에서 제품명·복용량·성분 자동 추출. `scan_service.py` 신규 추가.
+| 테이블 | 설명 |
+|--------|------|
+| `users` | Cognito 유저 (cognito_id PK, email) |
+| `user_profile` | 유저 상세 정보 (생년월일, 성별, 키, 몸무게 등) |
+| `current_supplements` | 현재 복용 중인 영양제 |
+| `user_condition_snapshots` | 건강 상태 스냅샷 |
+| `consents` | 약관 동의 내역 |
 
-#### ✨ Docker Compose에 프론트엔드 서비스 추가
+---
 
-`source-frontend` 레포를 Docker Compose로 함께 실행.
-Vite proxy target 환경변수화 (`VITE_API_URL`).
+## 인증 방식
 
-#### 🐛 Docker 네트워크 미연결로 DB 접속 불가
+### Cognito 환경 (운영)
 
-첫 실행 실패(포트 충돌) 후 db 컨테이너가 네트워크에 연결되지 않는 문제 → `docker compose down && up`으로 해결.
+`COGNITO_USER_POOL_ID` 설정 시 JWKS 엔드포인트에서 공개키를 받아 RS256 토큰 검증.
 
-#### 🐛 OCR 파싱 실패 (영어 라벨 + 멀티라인)
+### 개발 환경 fallback
 
-- 영어 성분명 30자 초과 → 길이 제한 60자로 확대
-- 영어 노이즈 라인(Calories, Total Fat 등) 필터 추가
-- 성분명과 수치가 별도 줄에 있는 멀티라인 포맷 파싱 추가
+`COGNITO_USER_POOL_ID` 미설정 시 HS256 방식으로 대체.
+`GET /dev/token/{cognito_id}`로 테스트용 토큰 발급 가능.
 
-#### 🔧 .gitignore 추가 및 .pyc 파일 추적 제거
+### 첫 로그인 자동 등록
 
-기존에 git에 추적되던 `__pycache__/*.pyc` 파일 46개 제거.
+신규 Cognito 유저가 API를 호출하면 JWT의 `sub`(cognito_id)와 `email` 클레임으로 `users` 테이블에 자동 INSERT된다.
+
+---
+
+## IAM 권한
+
+| 권한 | 용도 |
+|------|------|
+| `textract:DetectDocumentText` | 영양제 성분표 OCR |
