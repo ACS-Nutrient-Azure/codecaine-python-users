@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     s3_bucket_name: str = ""
 
+    # CODEF
+    codef_client_id: str = ""
+    codef_client_secret: str = ""
+
     allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"
 
     @property
