@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -72,6 +72,6 @@ async def health_check():
 async def get_dev_token(cognito_id: str):
     """개발/테스트용 JWT 토큰 발급 (운영 환경에서는 제거)"""
     if settings.app_env != "development":
-        return {"error": "운영 환경에서는 사용할 수 없습니다."}
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="운영 환경에서는 사용할 수 없습니다.")
     token = create_test_token(cognito_id)
     return {"access_token": token, "token_type": "bearer"}

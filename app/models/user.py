@@ -9,7 +9,7 @@ from app.db.database import Base
 
 class User(Base):
     """Users 테이블 - 인증 서비스(Cognito)와 연동"""
-    __tablename__ = "users"
+    __tablename__ = "Users"
 
     cognito_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -41,7 +41,7 @@ class UserConditionSnapshot(Base):
 
     snapshot_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    condition_info: Mapped[str | None] = mapped_column("내 상태 정보", String(255), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

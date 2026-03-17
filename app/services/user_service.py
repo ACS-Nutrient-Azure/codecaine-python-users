@@ -2,6 +2,7 @@ import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserProfile
@@ -24,14 +25,37 @@ class UserService:
         result = await db.execute(select(User).where(User.cognito_id == cognito_id))
         user = result.scalar_one_or_none()
         if not user:
+            # 동일 email이 다른 cognito_id에 이미 존재하는 경우 unique constraint 위반 방지
+            if email:
+                existing = await db.execute(select(User).where(User.email == email))
+                existing_user = existing.scalar_one_or_none()
+                if existing_user and existing_user.cognito_id != cognito_id:
+                    # 이미 다른 계정에 등록된 이메일 — 빈 문자열로 대체하여 충돌 방지
+                    logger.warning(
+                        "[USER] email=%s 이미 cognito_id=%s 에 등록됨. 신규 유저 email 비워서 생성.",
+                        email, existing_user.cognito_id,
+                    )
+                    email = ""
             user = User(cognito_id=cognito_id, email=email)
             db.add(user)
-            await db.flush()
+            try:
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # flush 실패 시 재조회 (동시 요청으로 이미 생성된 경우)
+                result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+                user = result.scalar_one_or_none()
+                if not user:
+                    raise
         elif email and user.email != email:
             # Cognito 토큰의 이메일이 DB와 다르면 최신 이메일로 동기화
-            user.email = email
-            db.add(user)
-            await db.flush()
+            # 단, 해당 email이 다른 계정에 없는 경우에만 업데이트
+            existing = await db.execute(select(User).where(User.email == email))
+            existing_user = existing.scalar_one_or_none()
+            if not existing_user or existing_user.cognito_id == cognito_id:
+                user.email = email
+                db.add(user)
+                await db.flush()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:

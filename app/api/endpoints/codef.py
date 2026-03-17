@@ -1,5 +1,7 @@
+import asyncio
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from functools import partial
 
 from app.core.security import get_current_user_id
 from app.schemas.codef import CodefUserInfo, CodefInitResponse, CodefFetchRequest
@@ -9,13 +11,14 @@ router = APIRouter(prefix="/codef", tags=["CODEF"])
 
 
 @router.post("/init", response_model=CodefInitResponse)
-def codef_init(
+async def codef_init(
     user_info: CodefUserInfo,
     _: str = Depends(get_current_user_id),
 ):
     """CODEF 카카오 인증 요청 (1단계) — 건강검진 + 처방기록 동시 요청"""
     try:
-        token = codef_service.get_access_token()
+        loop = asyncio.get_running_loop()
+        token = await loop.run_in_executor(None, codef_service.get_access_token)
 
         # 연도 범위 자동 계산 — 최근 5년
         current_year = date.today().year
@@ -24,14 +27,18 @@ def codef_init(
         presc_start = f"{current_year - 1}0101"
         presc_end = f"{current_year}1231"
 
-        hc_resp = codef_service.request_health_check(
-            token=token,
-            user_name=user_info.user_name,
-            phone_no=user_info.phone_no,
-            identity=user_info.identity,
-            nhis_id=user_info.nhis_id,
-            start_year=hc_start_year,
-            end_year=hc_end_year,
+        hc_resp = await loop.run_in_executor(
+            None,
+            partial(
+                codef_service.request_health_check,
+                token=token,
+                user_name=user_info.user_name,
+                phone_no=user_info.phone_no,
+                identity=user_info.identity,
+                nhis_id=user_info.nhis_id,
+                start_year=hc_start_year,
+                end_year=hc_end_year,
+            ),
         )
 
         def extract_two_way(resp: dict) -> dict:
@@ -46,14 +53,18 @@ def codef_init(
         hc_two_way = extract_two_way(hc_resp)
 
         try:
-            presc_resp = codef_service.request_prescription(
-                token=token,
-                user_name=user_info.user_name,
-                phone_no=user_info.phone_no,
-                identity=user_info.identity,
-                nhis_id=user_info.nhis_id,
-                start_date=presc_start,
-                end_date=presc_end,
+            presc_resp = await loop.run_in_executor(
+                None,
+                partial(
+                    codef_service.request_prescription,
+                    token=token,
+                    user_name=user_info.user_name,
+                    phone_no=user_info.phone_no,
+                    identity=user_info.identity,
+                    nhis_id=user_info.nhis_id,
+                    start_date=presc_start,
+                    end_date=presc_end,
+                ),
             )
             presc_two_way = extract_two_way(presc_resp)
         except Exception:
@@ -68,12 +79,14 @@ def codef_init(
             "presc_start": presc_start,
             "presc_end": presc_end,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/fetch")
-def codef_fetch(
+async def codef_fetch(
     req: CodefFetchRequest,
     current_user_id: str = Depends(get_current_user_id),
 ):
@@ -81,31 +94,40 @@ def codef_fetch(
     if current_user_id != req.cognito_id:
         raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
     try:
+        loop = asyncio.get_running_loop()
         current_year = date.today().year
         hc_start_year = req.hc_start_year or str(current_year - 4)
         hc_end_year = req.hc_end_year or str(current_year)
         presc_start = req.presc_start or f"{current_year - 1}0101"
         presc_end = req.presc_end or f"{current_year}1231"
 
-        hc_data = codef_service.fetch_health_check(
-            token=req.token,
-            user_name=req.user_info.user_name,
-            phone_no=req.user_info.phone_no,
-            identity=req.user_info.identity,
-            nhis_id=req.user_info.nhis_id,
-            start_year=hc_start_year,
-            end_year=hc_end_year,
-            two_way_info=req.health_check_two_way,
+        hc_data = await loop.run_in_executor(
+            None,
+            partial(
+                codef_service.fetch_health_check,
+                token=req.token,
+                user_name=req.user_info.user_name,
+                phone_no=req.user_info.phone_no,
+                identity=req.user_info.identity,
+                nhis_id=req.user_info.nhis_id,
+                start_year=hc_start_year,
+                end_year=hc_end_year,
+                two_way_info=req.health_check_two_way,
+            ),
         )
-        presc_data = codef_service.fetch_prescription(
-            token=req.token,
-            user_name=req.user_info.user_name,
-            phone_no=req.user_info.phone_no,
-            identity=req.user_info.identity,
-            nhis_id=req.user_info.nhis_id,
-            start_date=presc_start,
-            end_date=presc_end,
-            two_way_info=req.prescription_two_way,
+        presc_data = await loop.run_in_executor(
+            None,
+            partial(
+                codef_service.fetch_prescription,
+                token=req.token,
+                user_name=req.user_info.user_name,
+                phone_no=req.user_info.phone_no,
+                identity=req.user_info.identity,
+                nhis_id=req.user_info.nhis_id,
+                start_date=presc_start,
+                end_date=presc_end,
+                two_way_info=req.prescription_two_way,
+            ),
         )
 
         exam_items = codef_service.parse_health_check(hc_data)
@@ -124,12 +146,14 @@ def codef_fetch(
             "medications": medications,
             "health_summary": health_summary,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/health-data/{cognito_id}")
-def get_health_data(
+async def get_health_data(
     cognito_id: str,
     current_user_id: str = Depends(get_current_user_id),
 ):

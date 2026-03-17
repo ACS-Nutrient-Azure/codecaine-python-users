@@ -6,7 +6,6 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 CODEF_TOKEN_URL = "https://oauth.codef.io/oauth/token"
-CODEF_BASE_URL = settings.codef_base_url
 
 
 def _parse_response(resp: requests.Response) -> dict:
