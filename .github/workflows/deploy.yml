@@ -2,58 +2,58 @@ name: Deploy to ECS
 
 on:
   push:
-    branches: [main]
-
-permissions:
-  id-token: write  # OIDC 토큰 발급 필수
-  contents: read
+    branches: [deploy]
+    paths: ['app/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
 
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: codecaine-python-mypage 
-  ECS_CLUSTER: supplement-rec-dev
-  ECS_SERVICE: supplement-rec-dev
+  ECR_REGISTRY: 070238434919.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPOSITORY: cdci-prd-users
+  SERVICE_NAME: users
+  CLUSTER: cdci-prd-cluster
 
 jobs:
   deploy:
-    name: Build & Deploy
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: sha-${{ github.sha }}
+        id: build
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag  $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-                      $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          TAG=$(date -u +%s)
+          IMAGE=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$TAG
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-      - name: Force new ECS deployment
+      - name: Get latest task definition
         run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --force-new-deployment \
-            --no-cli-pager
+          aws ecs describe-task-definition \
+            --task-definition cdci-prd-${{ env.SERVICE_NAME }} \
+            --query taskDefinition > task-definition.json
 
-      - name: Wait for service stability
-        run: |
-          aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }}
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.SERVICE_NAME }}
+          image: ${{ steps.build.outputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: cdci-prd-${{ env.SERVICE_NAME }}-service
+          cluster: ${{ env.CLUSTER }}
+          wait-for-service-stability: true

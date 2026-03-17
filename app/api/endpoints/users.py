@@ -30,6 +30,8 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
 ):
     """마이페이지 정보 조회"""
+    if current_user.cognito_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 정보만 조회할 수 있습니다.")
     return await user_service.get_profile(db, cognito_id, current_user.email)
 
 
@@ -41,6 +43,8 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
 ):
     """사용자 정보 수정"""
+    if current_user.cognito_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 정보만 수정할 수 있습니다.")
     await user_service.update_profile(db, cognito_id, data, current_user.email)
     return UserUpdateResponse()
 
@@ -48,10 +52,12 @@ async def update_profile(
 @router.delete("/{cognito_id}", response_model=UserDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_account(
     cognito_id: str,
-    _: str = Depends(get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """회원 탈퇴"""
+    if current_user_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인 계정만 탈퇴할 수 있습니다.")
     await user_service.delete_user(db, cognito_id)
     return UserDeleteResponse()
 
@@ -68,6 +74,8 @@ async def get_supplements(
     db: AsyncSession = Depends(get_db),
 ):
     """현재 복용 중인 영양제 목록 조회"""
+    if current_user.cognito_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 영양제 목록만 조회할 수 있습니다.")
     supplements = await user_service.get_supplements(db, cognito_id, is_active, current_user.email)
     return SupplementListResponse(supplements=supplements)
 
@@ -80,6 +88,8 @@ async def create_supplement(
     history_db: AsyncSession = Depends(get_history_db),
 ):
     """영양제 추가"""
+    if current_user.cognito_id != data.cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 영양제만 추가할 수 있습니다.")
     created = await user_service.create_supplement(db, data.cognito_id, data, current_user.email, history_db)
     return SupplementCreateResponse(ans_current_id=created.ans_current_id)
 

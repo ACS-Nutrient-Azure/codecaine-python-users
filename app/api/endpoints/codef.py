@@ -75,9 +75,11 @@ def codef_init(
 @router.post("/fetch")
 def codef_fetch(
     req: CodefFetchRequest,
-    _: str = Depends(get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """CODEF 카카오 인증 완료 후 데이터 조회 (2단계)"""
+    if current_user_id != req.cognito_id:
+        raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
     try:
         current_year = date.today().year
         hc_start_year = req.hc_start_year or str(current_year - 4)
@@ -129,9 +131,11 @@ def codef_fetch(
 @router.get("/health-data/{cognito_id}")
 def get_health_data(
     cognito_id: str,
-    _: str = Depends(get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """S3에 저장된 건강 요약 데이터 조회"""
+    if current_user_id != cognito_id:
+        raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
     summary = s3_service.download_json(cognito_id, "health_summary.json")
     if summary is None:
         raise HTTPException(status_code=404, detail="저장된 건강 데이터가 없습니다.")
