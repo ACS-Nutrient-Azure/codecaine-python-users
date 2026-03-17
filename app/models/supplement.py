@@ -7,6 +7,17 @@ from sqlalchemy.sql import func
 from app.db.database import Base
 
 
+class CurrentIngredient(Base):
+    """current_ingredients 테이블"""
+    __tablename__ = "current_ingredients"
+
+    ingredient_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    current_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ingredient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    nutrient_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CurrentSupplement(Base):
     """1-7. 복용중인 영양제 테이블"""
     __tablename__ = "current_supplements"
