@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.security import create_test_token
 from app.core.telemetry import setup_telemetry
-from app.api.v1.router import api_router
+from app.api.router import api_router
+from app.db.database import engine
 
 setup_telemetry()
 
@@ -58,6 +60,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/health", tags=["헬스체크"])
 async def health_check():
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"DB 연결 실패: {e}")
     return {"status": "ok", "service": settings.app_name}
 
 

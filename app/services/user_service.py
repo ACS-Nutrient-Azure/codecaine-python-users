@@ -1,9 +1,11 @@
+import logging
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserProfile
-from app.models.supplement import CurrentSupplement
+from app.models.supplement import CurrentSupplement, IntakeSupplement
 from app.schemas.user import (
     UserProfileResponse,
     UserProfileUpdateRequest,
@@ -13,17 +15,23 @@ from app.schemas.user import (
     SupplementStatusRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class UserService:
 
-    async def get_user_or_404(self, db: AsyncSession, cognito_id: str) -> User:
+    async def get_or_create_user(self, db: AsyncSession, cognito_id: str, email: str = "") -> User:
         result = await db.execute(select(User).where(User.cognito_id == cognito_id))
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="사용자를 찾을 수 없습니다.",
-            )
+            user = User(cognito_id=cognito_id, email=email)
+            db.add(user)
+            await db.flush()
+        elif email and user.email != email:
+            # Cognito 토큰의 이메일이 DB와 다르면 최신 이메일로 동기화
+            user.email = email
+            db.add(user)
+            await db.flush()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:
@@ -37,8 +45,8 @@ class UserService:
             await db.flush()
         return profile
 
-    async def get_profile(self, db: AsyncSession, cognito_id: str) -> UserProfileResponse:
-        user = await self.get_user_or_404(db, cognito_id)
+    async def get_profile(self, db: AsyncSession, cognito_id: str, email: str = "") -> UserProfileResponse:
+        user = await self.get_or_create_user(db, cognito_id, email)
         profile = await self.get_or_create_profile(db, cognito_id)
 
         return UserProfileResponse(
@@ -56,9 +64,9 @@ class UserService:
         )
 
     async def update_profile(
-        self, db: AsyncSession, cognito_id: str, data: UserProfileUpdateRequest
+        self, db: AsyncSession, cognito_id: str, data: UserProfileUpdateRequest, email: str = ""
     ) -> UserProfileResponse:
-        await self.get_user_or_404(db, cognito_id)
+        await self.get_or_create_user(db, cognito_id, email)
         profile = await self.get_or_create_profile(db, cognito_id)
 
         # ans_ prefix를 DB 컬럼명으로 변환
@@ -78,14 +86,14 @@ class UserService:
 
         db.add(profile)
         await db.flush()
-        return await self.get_profile(db, cognito_id)
+        return await self.get_profile(db, cognito_id, email)
 
     # --- Supplements ---
 
     async def get_supplements(
-        self, db: AsyncSession, cognito_id: str, is_active: bool | None = None
+        self, db: AsyncSession, cognito_id: str, is_active: bool | None = None, email: str = ""
     ) -> list[SupplementResponse]:
-        await self.get_user_or_404(db, cognito_id)
+        await self.get_or_create_user(db, cognito_id, email)
         query = select(CurrentSupplement).where(CurrentSupplement.cognito_id == cognito_id)
         if is_active is not None:
             query = query.where(CurrentSupplement.is_active == is_active)
@@ -94,10 +102,59 @@ class UserService:
         supplements = result.scalars().all()
         return [SupplementResponse.model_validate(s) for s in supplements]
 
+    async def _sync_to_history(
+        self, history_db: AsyncSession | None, supplement: CurrentSupplement
+    ) -> None:
+        """intake_supplements 테이블에 upsert (DMS 대체)"""
+        if history_db is None:
+            return
+        try:
+            result = await history_db.execute(
+                select(IntakeSupplement).where(
+                    IntakeSupplement.current_id == supplement.current_id,
+                    IntakeSupplement.cognito_id == supplement.cognito_id,
+                )
+            )
+            intake = result.scalar_one_or_none()
+            if intake is None:
+                intake = IntakeSupplement(
+                    current_id=supplement.current_id,
+                    cognito_id=supplement.cognito_id,
+                )
+                history_db.add(intake)
+            intake.itk_product_name = supplement.product_name
+            intake.itk_serving_amount = supplement.serving_amount
+            intake.itk_serving_per_day = supplement.serving_per_day
+            intake.itk_daily_total_amount = supplement.daily_total_amount
+            intake.is_active = supplement.is_active
+            await history_db.flush()
+        except Exception as e:
+            logger.warning("history DB 동기화 실패 (무시됨): %s", e)
+
+    async def _delete_from_history(
+        self, history_db: AsyncSession | None, current_id: int, cognito_id: str
+    ) -> None:
+        if history_db is None:
+            return
+        try:
+            result = await history_db.execute(
+                select(IntakeSupplement).where(
+                    IntakeSupplement.current_id == current_id,
+                    IntakeSupplement.cognito_id == cognito_id,
+                )
+            )
+            intake = result.scalar_one_or_none()
+            if intake:
+                await history_db.delete(intake)
+                await history_db.flush()
+        except Exception as e:
+            logger.warning("history DB 삭제 실패 (무시됨): %s", e)
+
     async def create_supplement(
-        self, db: AsyncSession, cognito_id: str, data: SupplementCreateRequest
+        self, db: AsyncSession, cognito_id: str, data: SupplementCreateRequest,
+        email: str = "", history_db: AsyncSession | None = None
     ) -> SupplementResponse:
-        await self.get_user_or_404(db, cognito_id)
+        await self.get_or_create_user(db, cognito_id, email)
         supplement = CurrentSupplement(
             cognito_id=cognito_id,
             product_name=data.ans_product_name,
@@ -109,10 +166,12 @@ class UserService:
         )
         db.add(supplement)
         await db.flush()
+        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def update_supplement(
-        self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementUpdateRequest
+        self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementUpdateRequest,
+        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -140,10 +199,12 @@ class UserService:
 
         db.add(supplement)
         await db.flush()
+        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def toggle_supplement_status(
-        self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementStatusRequest
+        self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementStatusRequest,
+        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -158,9 +219,13 @@ class UserService:
         supplement.is_active = data.ans_is_active
         db.add(supplement)
         await db.flush()
+        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
-    async def delete_supplement(self, db: AsyncSession, cognito_id: str, current_id: int) -> None:
+    async def delete_supplement(
+        self, db: AsyncSession, cognito_id: str, current_id: int,
+        history_db: AsyncSession | None = None
+    ) -> None:
         result = await db.execute(
             select(CurrentSupplement).where(
                 CurrentSupplement.current_id == current_id,
@@ -171,9 +236,13 @@ class UserService:
         if not supplement:
             raise HTTPException(status_code=404, detail="영양제를 찾을 수 없습니다.")
         await db.delete(supplement)
+        await self._delete_from_history(history_db, current_id, cognito_id)
 
     async def delete_user(self, db: AsyncSession, cognito_id: str) -> None:
-        user = await self.get_user_or_404(db, cognito_id)
+        result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
         await db.delete(user)
 
 
