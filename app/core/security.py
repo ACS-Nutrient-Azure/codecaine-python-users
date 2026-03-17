@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import NamedTuple
@@ -19,15 +20,24 @@ class CurrentUser(NamedTuple):
 
 # ── Cognito JWKS ──────────────────────────────────────────────────────────────
 
-@lru_cache()
+_jwks_cache: dict = {"keys": [], "expires_at": 0.0}
+_JWKS_TTL = 3600  # 1시간마다 갱신
+
+
 def _get_cognito_jwks() -> list:
+    now = time.monotonic()
+    if now < _jwks_cache["expires_at"] and _jwks_cache["keys"]:
+        return _jwks_cache["keys"]
     url = (
         f"https://cognito-idp.{settings.aws_region}.amazonaws.com"
         f"/{settings.cognito_user_pool_id}/.well-known/jwks.json"
     )
     resp = httpx.get(url, timeout=5)
     resp.raise_for_status()
-    return resp.json()["keys"]
+    keys = resp.json()["keys"]
+    _jwks_cache["keys"] = keys
+    _jwks_cache["expires_at"] = now + _JWKS_TTL
+    return keys
 
 
 def _verify_cognito_token(token: str) -> dict:
@@ -57,6 +67,8 @@ def create_test_token(cognito_id: str) -> str:
 
 
 def _verify_dev_token(token: str) -> dict:
+    if not settings.jwt_secret_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT_SECRET_KEY가 설정되지 않았습니다.")
     try:
         return jwt.decode(token, settings.jwt_secret_key, algorithms=["HS256"])
     except JWTError:

@@ -2,11 +2,13 @@ version: "3.9"
 
 services:
   frontend:
-    build: ../source-frontend
+    build:
+      context: ../source-frontend
+      args:
+        - VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID:-ap-northeast-2_r254TEZGi}
+        - VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID:-5jc2e0ftplhoht8305bgs7t155}
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://mypage-service:8000
+      - "5173:8080"
     depends_on:
       - mypage-service
 
@@ -17,13 +19,20 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/mypage_db
+      - COGNITO_USER_POOL_ID=ap-northeast-2_r254TEZGi
+      - COGNITO_CLIENT_ID=5jc2e0ftplhoht8305bgs7t155
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - .:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   db:
     image: postgres:16-alpine
