@@ -76,7 +76,7 @@ def _call_textract(image_bytes: bytes) -> str:
 
 async def extract_text(image_bytes: bytes) -> str:
     """Textract로 텍스트 추출 (async 래퍼)"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(None, partial(_call_textract, image_bytes))
     except ClientError as e:

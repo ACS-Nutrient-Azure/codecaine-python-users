@@ -1,6 +1,7 @@
+import asyncio
+import logging
 import time
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from typing import NamedTuple
 
 import httpx
@@ -32,7 +33,9 @@ def _get_cognito_jwks() -> list:
         f"https://cognito-idp.{settings.aws_region}.amazonaws.com"
         f"/{settings.cognito_user_pool_id}/.well-known/jwks.json"
     )
-    resp = httpx.get(url, timeout=5)
+    # httpx.Client (동기) — run_in_executor로 감싸서 호출됨
+    with httpx.Client(timeout=5) as client:
+        resp = client.get(url)
     resp.raise_for_status()
     keys = resp.json()["keys"]
     _jwks_cache["keys"] = keys
@@ -77,6 +80,9 @@ def _verify_dev_token(token: str) -> dict:
 
 # ── Public dependency ─────────────────────────────────────────────────────────
 
+_auth_logger = logging.getLogger(__name__)
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> CurrentUser:
@@ -84,10 +90,12 @@ async def get_current_user(
 
     if settings.cognito_user_pool_id:
         try:
-            payload = _verify_cognito_token(token)
+            loop = asyncio.get_running_loop()
+            payload = await loop.run_in_executor(None, _verify_cognito_token, token)
+        except HTTPException:
+            raise
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error("[AUTH] Cognito 검증 실패: %s", e, exc_info=True)
+            _auth_logger.error("[AUTH] Cognito 검증 실패: %s", e, exc_info=True)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰입니다.")
     else:
         payload = _verify_dev_token(token)
