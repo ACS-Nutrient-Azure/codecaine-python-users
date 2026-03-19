@@ -68,7 +68,11 @@ def codef_init(
             "presc_start": presc_start,
             "presc_end": presc_end,
         }
+    except HTTPException as e:
+        print(e)
+        raise
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
