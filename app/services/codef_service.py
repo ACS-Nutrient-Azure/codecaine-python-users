@@ -27,7 +27,7 @@ def _parse_response(resp: requests.Response) -> dict:
 def get_access_token() -> str:
     resp = requests.post(
         CODEF_TOKEN_URL,
-        params={"grant_type": "client_credentials", "scope": "read"},
+        data={"grant_type": "client_credentials", "scope": "read"},
         auth=(settings.codef_client_id, settings.codef_client_secret),
         timeout=10,
     )
