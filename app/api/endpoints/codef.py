@@ -7,7 +7,7 @@ from app.core.security import get_current_user_id
 from app.schemas.codef import CodefUserInfo, CodefInitResponse, CodefFetchRequest
 from app.services import codef_service, s3_service
 
-router = APIRouter(prefix="/codef", tags=["CODEF"])
+router = APIRouter(prefix="/users/codef", tags=["CODEF"])
 
 
 @router.post("/init", response_model=CodefInitResponse)
