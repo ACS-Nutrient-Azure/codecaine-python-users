@@ -6,7 +6,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 CODEF_TOKEN_URL = "https://oauth.codef.io/oauth/token"
-
+CODEF_BASE_URL = "https://development.codef.io"
 
 def _parse_response(resp: requests.Response) -> dict:
     """CODEF 응답 파싱 — 빈 응답·비JSON·URL인코딩 응답 모두 처리"""
