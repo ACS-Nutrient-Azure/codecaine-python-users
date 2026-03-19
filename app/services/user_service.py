@@ -2,6 +2,7 @@ import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserProfile
@@ -26,12 +27,27 @@ class UserService:
         if not user:
             user = User(cognito_id=cognito_id, email=email)
             db.add(user)
-            await db.flush()
+            try:
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # 동시 요청으로 이미 생성된 경우 재조회
+                result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+                user = result.scalar_one_or_none()
+                if not user:
+                    raise
         elif email and user.email != email:
             # Cognito 토큰의 이메일이 DB와 다르면 최신 이메일로 동기화
-            user.email = email
-            db.add(user)
-            await db.flush()
+            try:
+                user.email = email
+                db.add(user)
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # 다른 계정에 동일 이메일이 있으면 업데이트 생략
+                logger.warning("[USER] email=%s 이미 다른 계정에 존재. 이메일 동기화 생략.", email)
+                result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+                user = result.scalar_one_or_none()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:
