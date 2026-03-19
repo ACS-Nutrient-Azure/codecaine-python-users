@@ -121,7 +121,7 @@ def request_prescription(token: str, user_name: str, phone_no: str, identity: st
         f"{CODEF_BASE_URL}/v1/kr/public/pp/nhis-treatment/information",
         json=payload,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
+        timeout=180,
     )
     resp.raise_for_status()
     return _parse_response(resp)
@@ -275,32 +275,40 @@ def parse_health_check(data: dict) -> list:
     return items
 
 
-def parse_prescription(data: dict) -> list:
+def parse_prescription(data) -> list:
     meds = []
-    d = data.get("data", {})
+    if isinstance(data, list):
+        d = {}
+    else:
+        d = data.get("data", {}) if isinstance(data, dict) else {}
 
-    treat_list = d.get("resTreatList") or d.get("resList") or []
+    if isinstance(d, list):
+        treat_list = d
+    else:
+        treat_list = d.get("resTreatList") or d.get("resList") or []
     seen = set()
     for treat in treat_list:
         med_list = treat.get("resMedicineList") or treat.get("resMediDetailList") or []
         for med in med_list:
-            name = med.get("resProductName") or med.get("resDrugName") or ""
+            name = med.get("resProductName") or med.get("resDrugName") or med.get("resPrescribeDrugName") or ""
             if not name or name in seen:
                 continue
             seen.add(name)
             meds.append({
+                "id": len(meds) + 1,
                 "name": name,
-                "dose": med.get("resOneDayDose") or med.get("resDose") or "-",
-                "schedule": med.get("resMedicationInfo") or med.get("resUsage") or "-",
+                "dose": med.get("resOneDayDose") or med.get("resDose") or med.get("resPrescribeDays") or "-",
+                "schedule": med.get("resMedicationInfo") or med.get("resUsage") or med.get("resPrescribeDrugEffect") or "-",
             })
 
     if not meds:
-        for med in d.get("resMediDetailList") or []:
-            name = med.get("resProductName") or med.get("resDrugName") or ""
+        for med in (d.get("resMediDetailList") if isinstance(d, dict) else None) or []:
+            name = med.get("resProductName") or med.get("resDrugName") or med.get("resPrescribeDrugName") or ""
             if not name or name in seen:
                 continue
             seen.add(name)
             meds.append({
+                "id": len(meds) + 1,
                 "name": name,
                 "dose": med.get("resOneDayDose") or med.get("resDose") or "-",
                 "schedule": med.get("resMedicationInfo") or med.get("resUsage") or "-",
