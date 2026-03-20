@@ -137,7 +137,6 @@ async def codef_fetch(
         for item in exam_items:
             db.add(PrescriptionMedication(
                 import_id=import_record.import_id,
-                cognito_id=req.cognito_id,
                 api_kind="healthcheck",
                 data_type=item["name"],
                 name=item["name"],
@@ -258,7 +257,6 @@ async def codef_presc_fetch(
         for med in medications:
             db.add(PrescriptionMedication(
                 import_id=import_record.import_id,
-                cognito_id=req.cognito_id,
                 api_kind="rx_prescription",
                 data_type="drug",
                 name=med["name"],
