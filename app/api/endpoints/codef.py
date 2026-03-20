@@ -150,13 +150,13 @@ def get_health_data(
     return summary
 
 
-@router.get("/analysis-data/{cognito_id}")
-async def get_analysis_data(
+@router.get("/internal-call/{cognito_id}")
+async def get_internal_call_data(
     cognito_id: str,
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """분석 서비스용 CODEF 데이터 조회 (JWT 전달 방식 서비스간 호출)
+    """내부 서비스 호출용 건강/처방 데이터 조회 (JWT 전달 방식 서비스간 호출)
 
     prescription_medications 테이블에서 api_kind로 구분하여 조회:
     - codef_health_data: 건강검진 수치 (api_kind == 'healthcheck')
