@@ -1,7 +1,11 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, join
 
 from app.core.security import get_current_user_id
+from app.db.database import get_db
+from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication
 from app.schemas.codef import CodefUserInfo, CodefInitResponse, CodefFetchRequest
 from app.services import codef_service, s3_service
 
@@ -144,3 +148,56 @@ def get_health_data(
     if summary is None:
         raise HTTPException(status_code=404, detail="저장된 건강 데이터가 없습니다.")
     return summary
+
+
+@router.get("/analysis-data/{cognito_id}")
+async def get_analysis_data(
+    cognito_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """분석 서비스용 CODEF 데이터 조회 (JWT 전달 방식 서비스간 호출)
+
+    prescription_medications 테이블에서 api_kind로 구분하여 조회:
+    - codef_health_data: 건강검진 수치 (api_kind == 'healthcheck')
+    - medication_info: 처방 의약품 (api_kind == 'rx_prescription')
+    """
+    if current_user_id != cognito_id:
+        raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
+
+    # external_healthcheck_import JOIN prescription_medications
+    stmt = (
+        select(PrescriptionMedication)
+        .join(
+            ExternalHealthcheckImport,
+            PrescriptionMedication.import_id == ExternalHealthcheckImport.import_id,
+        )
+        .where(ExternalHealthcheckImport.cognito_id == cognito_id)
+        .order_by(PrescriptionMedication.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    codef_health_data = {}
+    medication_info = []
+
+    for row in rows:
+        if row.api_kind == "rx_prescription":
+            medication_info.append({
+                "name": row.name,
+                "dose": row.value,
+                "unit": row.unit,
+            })
+        elif row.api_kind == "healthcheck":
+            # 혈압, 혈당, 콜레스테롤 등 검진 수치
+            key = row.name or row.data_type
+            codef_health_data[key] = row.value
+
+    # height, weight, exam_date는 S3 health_summary에서 보완
+    summary = s3_service.download_json(cognito_id, "health_summary.json") or {}
+    codef_health_data.update({k: v for k, v in summary.items() if k not in codef_health_data})
+
+    return {
+        "codef_health_data": codef_health_data,
+        "medication_info": medication_info,
+    }
