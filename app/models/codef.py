@@ -41,6 +41,7 @@ class PrescriptionMedication(Base):
 
     med_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     import_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
     api_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)       # healthcheck/rx_prescription
     data_type: Mapped[str | None] = mapped_column(String(50), nullable=True)      # drug, blood_pressure, cholesterol, glucose 등
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)          # 약품명/혈압/혈당 등

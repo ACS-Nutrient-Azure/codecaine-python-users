@@ -1,20 +1,26 @@
 import asyncio
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from functools import partial
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.schemas.codef import (
     CodefUserInfo, CodefInitResponse, CodefFetchRequest,
     CodefPrescInitResponse, CodefPrescFetchRequest,
 )
+from app.core.config import settings
+from app.db.database import get_db
+from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication
 from app.services import codef_service, s3_service
 
 router = APIRouter(prefix="/users/codef", tags=["CODEF"])
 
 
 def _extract_two_way(resp: dict) -> dict:
-    data = resp.get("data") or {}
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if not isinstance(data, dict):
+        data = {}
     return {
         "jobIndex": data.get("jobIndex", 0),
         "threadIndex": data.get("threadIndex", 0),
@@ -67,6 +73,7 @@ async def codef_init(
 async def codef_fetch(
     req: CodefFetchRequest,
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """CODEF 카카오 인증 완료 후 건강검진 데이터 조회 (2단계)"""
     if current_user_id != req.cognito_id:
@@ -95,9 +102,37 @@ async def codef_fetch(
         exam_items = codef_service.parse_health_check(hc_data)
         health_summary = codef_service.extract_health_summary(hc_data)
 
-        s3_service.upload_json(req.cognito_id, "codef_hc_raw.json", {"health_check": hc_data})
+        codef_bucket = settings.s3_codef_bucket_name
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_hc_raw.json", {"health_check": hc_data}, bucket=codef_bucket)
         if health_summary:
-            s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary)
+            s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary, bucket=codef_bucket)
+
+        # DB 저장
+        expires = datetime.now(timezone.utc) + timedelta(days=30)
+        import_record = ExternalHealthcheckImport(
+            cognito_id=req.cognito_id,
+            api_kind="healthcheck",
+            source_s3_url=s3_key,
+            exprires_at=expires,
+        )
+        db.add(import_record)
+        await db.flush()  # import_id 확보
+
+        period_start = date(int(hc_start_year), 1, 1)
+        period_end = date(int(hc_end_year), 12, 31)
+        for item in exam_items:
+            db.add(PrescriptionMedication(
+                import_id=import_record.import_id,
+                cognito_id=req.cognito_id,
+                api_kind="healthcheck",
+                data_type=item["name"],
+                name=item["name"],
+                value=item["value"],
+                unit=item["unit"],
+                period_start_dt=period_start,
+                period_end_dt=period_end,
+                expires_at=expires,
+            ))
 
         return {
             "exam_items": exam_items,
@@ -153,6 +188,7 @@ async def codef_presc_init(
 async def codef_presc_fetch(
     req: CodefPrescFetchRequest,
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """처방기록 카카오 인증 완료 후 데이터 조회 (처방 2단계)"""
     if current_user_id != req.cognito_id:
@@ -180,7 +216,33 @@ async def codef_presc_fetch(
 
         medications = codef_service.parse_prescription(presc_data)
 
-        s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data})
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data}, bucket=settings.s3_codef_bucket_name)
+
+        # DB 저장
+        expires = datetime.now(timezone.utc) + timedelta(days=30)
+        import_record = ExternalHealthcheckImport(
+            cognito_id=req.cognito_id,
+            api_kind="rx_prescription",
+            source_s3_url=s3_key,
+            exprires_at=expires,
+        )
+        db.add(import_record)
+        await db.flush()  # import_id 확보
+
+        period_start = date(int(presc_start[:4]), int(presc_start[4:6]), int(presc_start[6:]))
+        period_end = date(int(presc_end[:4]), int(presc_end[4:6]), int(presc_end[6:]))
+        for med in medications:
+            db.add(PrescriptionMedication(
+                import_id=import_record.import_id,
+                cognito_id=req.cognito_id,
+                api_kind="rx_prescription",
+                data_type="drug",
+                name=med["name"],
+                value=med["dose"],
+                period_start_dt=period_start,
+                period_end_dt=period_end,
+                expires_at=expires,
+            ))
 
         return {"medications": medications, "success": True}
     except HTTPException:
@@ -197,7 +259,7 @@ async def get_health_data(
     """S3에 저장된 건강 요약 데이터 조회"""
     if current_user_id != cognito_id:
         raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
-    summary = s3_service.download_json(cognito_id, "health_summary.json")
+    summary = s3_service.download_json(cognito_id, "health_summary.json", bucket=settings.s3_codef_bucket_name)
     if summary is None:
         raise HTTPException(status_code=404, detail="저장된 건강 데이터가 없습니다.")
     return summary
