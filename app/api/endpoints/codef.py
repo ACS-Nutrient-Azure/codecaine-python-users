@@ -20,6 +20,9 @@ router = APIRouter(prefix="/users/codef", tags=["CODEF"])
 
 def _extract_two_way(resp: dict) -> dict:
     data = resp.get("data") if isinstance(resp, dict) else None
+    # CODEF가 data를 list로 반환하는 경우 첫 번째 요소 사용
+    if isinstance(data, list) and len(data) > 0:
+        data = data[0]
     if not isinstance(data, dict):
         data = {}
     return {
