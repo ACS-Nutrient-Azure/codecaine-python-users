@@ -124,7 +124,12 @@ def request_prescription(token: str, user_name: str, phone_no: str, identity: st
         timeout=180,
     )
     resp.raise_for_status()
-    return _parse_response(resp)
+    result = _parse_response(resp)
+    logger.info("[CODEF presc-init raw response] type=%s keys=%s", type(result).__name__, list(result.keys()) if isinstance(result, dict) else result[:2] if isinstance(result, list) else result)
+    if isinstance(result, dict):
+        data = result.get("data")
+        logger.info("[CODEF presc-init data] type=%s value=%s", type(data).__name__, str(data)[:300])
+    return result
 
 
 def fetch_prescription(token: str, user_name: str, phone_no: str, identity: str, nhis_id: str, start_date: str, end_date: str, two_way_info: dict) -> dict:
