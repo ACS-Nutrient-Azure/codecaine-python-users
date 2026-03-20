@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from datetime import date, datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from functools import partial
@@ -11,7 +12,7 @@ from app.schemas.codef import (
 )
 from app.core.config import settings
 from app.db.database import get_db
-from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication
+from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication, CodefApiCallLog
 from app.services import codef_service, s3_service
 
 router = APIRouter(prefix="/users/codef", tags=["CODEF"])
@@ -117,6 +118,16 @@ async def codef_fetch(
         )
         db.add(import_record)
         await db.flush()  # import_id 확보
+
+        db.add(CodefApiCallLog(
+            import_id=import_record.import_id,
+            api_kind="healthcheck",
+            agred_dt=date.today(),
+            phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
+            codef_request_id=req.health_check_two_way.get("jti") if isinstance(req.health_check_two_way, dict) else None,
+            status=True,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=365 * 3),
+        ))
 
         period_start = date(int(hc_start_year), 1, 1)
         period_end = date(int(hc_end_year), 12, 31)
@@ -228,6 +239,16 @@ async def codef_presc_fetch(
         )
         db.add(import_record)
         await db.flush()  # import_id 확보
+
+        db.add(CodefApiCallLog(
+            import_id=import_record.import_id,
+            api_kind="rx_prescription",
+            agred_dt=date.today(),
+            phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
+            codef_request_id=req.prescription_two_way.get("jti") if isinstance(req.prescription_two_way, dict) else None,
+            status=True,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=365 * 3),
+        ))
 
         period_start = date(int(presc_start[:4]), int(presc_start[4:6]), int(presc_start[6:]))
         period_end = date(int(presc_end[:4]), int(presc_end[4:6]), int(presc_end[6:]))
