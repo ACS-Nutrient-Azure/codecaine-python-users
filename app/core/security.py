@@ -53,7 +53,7 @@ def _verify_cognito_token(token: str) -> dict:
         token,
         key,
         algorithms=["RS256"],
-        audience=settings.cognito_client_id,
+        options={"verify_aud": False},  # access token은 aud 클레임 없음
     )
     return payload
 
