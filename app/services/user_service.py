@@ -42,20 +42,23 @@ class UserService:
                 await db.flush()
             except IntegrityError:
                 await db.rollback()
-                # flush 실패 시 재조회 (동시 요청으로 이미 생성된 경우)
+                # 동시 요청으로 이미 생성된 경우 재조회
                 result = await db.execute(select(User).where(User.cognito_id == cognito_id))
                 user = result.scalar_one_or_none()
                 if not user:
                     raise
         elif email and user.email != email:
             # Cognito 토큰의 이메일이 DB와 다르면 최신 이메일로 동기화
-            # 단, 해당 email이 다른 계정에 없는 경우에만 업데이트
-            existing = await db.execute(select(User).where(User.email == email))
-            existing_user = existing.scalar_one_or_none()
-            if not existing_user or existing_user.cognito_id == cognito_id:
+            try:
                 user.email = email
                 db.add(user)
                 await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # 다른 계정에 동일 이메일이 있으면 업데이트 생략
+                logger.warning("[USER] email=%s 이미 다른 계정에 존재. 이메일 동기화 생략.", email)
+                result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+                user = result.scalar_one_or_none()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:
