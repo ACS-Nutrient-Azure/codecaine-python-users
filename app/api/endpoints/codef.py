@@ -385,6 +385,7 @@ async def codef_presc_fetch(
         for med in medications:
             db.add(PrescriptionMedication(
                 import_id=import_record.import_id,
+                cognito_id=req.cognito_id,
                 api_kind="rx_prescription",
                 data_type="drug",
                 name=med["name"],
@@ -394,6 +395,7 @@ async def codef_presc_fetch(
                 expires_at=expires,
             ))
 
+        await db.commit()
         return {"medications": medications, "success": True}
     except HTTPException:
         raise

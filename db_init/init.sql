@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS codef_api_call_log (
 );
 
 -- 처방전 / 건강검진 수치 데이터
-CREATE TABLE IF NOT EXISTS prescription_medications (
+DROP TABLE IF EXISTS prescription_medications CASCADE;
+CREATE TABLE prescription_medications (
     med_id          BIGSERIAL    NOT NULL,
     import_id       BIGINT       NOT NULL,
     cognito_id      VARCHAR(36)  NOT NULL,
