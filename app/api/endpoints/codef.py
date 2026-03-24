@@ -1,15 +1,35 @@
-from datetime import date
+import asyncio
+import hashlib
+from datetime import date, datetime, timedelta, timezone
+from functools import partial
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, join
+from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.security import get_current_user_id
 from app.db.database import get_db
-from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication
-from app.schemas.codef import CodefUserInfo, CodefInitResponse, CodefFetchRequest
+from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication, CodefApiCallLog
+from app.schemas.codef import (
+    CodefUserInfo,
+    CodefInitResponse,
+    CodefFetchRequest,
+    CodefPrescInitResponse,
+    CodefPrescFetchRequest,
+)
 from app.services import codef_service, s3_service
 
 router = APIRouter(prefix="/users/codef", tags=["CODEF"])
+
+
+def _extract_two_way(resp: dict) -> dict:
+    data = resp.get("data") or {}
+    return {
+        "jobIndex": data.get("jobIndex", 0),
+        "threadIndex": data.get("threadIndex", 0),
+        "jti": data.get("jti", ""),
+        "twoWayTimestamp": data.get("twoWayTimestamp", 0),
+    }
 
 
 @router.post("/init", response_model=CodefInitResponse)
@@ -38,16 +58,7 @@ def codef_init(
             end_year=hc_end_year,
         )
 
-        def extract_two_way(resp: dict) -> dict:
-            data = resp.get("data") or {}
-            return {
-                "jobIndex": data.get("jobIndex", 0),
-                "threadIndex": data.get("threadIndex", 0),
-                "jti": data.get("jti", ""),
-                "twoWayTimestamp": data.get("twoWayTimestamp", 0),
-            }
-
-        hc_two_way = extract_two_way(hc_resp)
+        hc_two_way = _extract_two_way(hc_resp)
 
         try:
             presc_resp = codef_service.request_prescription(
@@ -59,7 +70,7 @@ def codef_init(
                 start_date=presc_start,
                 end_date=presc_end,
             )
-            presc_two_way = extract_two_way(presc_resp)
+            presc_two_way = _extract_two_way(presc_resp)
         except Exception:
             presc_two_way = {"jobIndex": 0, "threadIndex": 0, "jti": "", "twoWayTimestamp": 0}
 
@@ -81,9 +92,10 @@ def codef_init(
 
 
 @router.post("/fetch")
-def codef_fetch(
+async def codef_fetch(
     req: CodefFetchRequest,
     current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """CODEF 카카오 인증 완료 후 데이터 조회 (2단계)"""
     if current_user_id != req.cognito_id:
@@ -120,15 +132,12 @@ def codef_fetch(
         medications = codef_service.parse_prescription(presc_data)
         health_summary = codef_service.extract_health_summary(hc_data)
 
-        s3_service.upload_json(req.cognito_id, "codef_raw.json", {
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_raw.json", {
             "health_check": hc_data,
             "prescription": presc_data,
         })
         if health_summary:
-<<<<<<< Updated upstream
             s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary)
-=======
-            s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary, bucket=codef_bucket)
 
         # DB 저장
         expires = datetime.now(timezone.utc) + timedelta(days=30)
@@ -165,15 +174,12 @@ def codef_fetch(
                 period_end_dt=period_end,
                 expires_at=expires,
             ))
->>>>>>> Stashed changes
 
         return {
             "exam_items": exam_items,
             "medications": medications,
             "health_summary": health_summary,
         }
-<<<<<<< Updated upstream
-=======
     except HTTPException:
         raise
     except Exception as e:
@@ -252,7 +258,7 @@ async def codef_presc_fetch(
 
         medications = codef_service.parse_prescription(presc_data)
 
-        s3_key = s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data}, bucket=settings.s3_codef_bucket_name)
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data})
 
         # DB 저장
         expires = datetime.now(timezone.utc) + timedelta(days=30)
@@ -292,7 +298,6 @@ async def codef_presc_fetch(
         return {"medications": medications, "success": True}
     except HTTPException:
         raise
->>>>>>> Stashed changes
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
