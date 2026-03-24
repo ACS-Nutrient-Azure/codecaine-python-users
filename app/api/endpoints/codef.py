@@ -1,8 +1,8 @@
 import asyncio
 import hashlib
 from datetime import date, datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
 from functools import partial
+from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.codef import (
     CodefUserInfo, CodefInitResponse, CodefFetchRequest,
     CodefPrescInitResponse, CodefPrescFetchRequest,
@@ -10,7 +10,7 @@ from app.schemas.codef import (
 from app.core.config import settings
 from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication, CodefApiCallLog
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, join
+from sqlalchemy import select
 from app.core.security import get_current_user_id
 from app.db.database import get_db
 from app.services import codef_service, s3_service
@@ -71,7 +71,6 @@ async def codef_init(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/fetch")
 async def codef_fetch(
@@ -232,15 +231,12 @@ async def codef_presc_fetch(
         medications = codef_service.parse_prescription(presc_data)
         health_summary = codef_service.extract_health_summary(hc_data)
 
-        s3_service.upload_json(req.cognito_id, "codef_raw.json", {
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_raw.json", {
             "health_check": hc_data,
             "prescription": presc_data,
         })
         if health_summary:
-<<<<<<< Updated upstream
             s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary)
-=======
-            s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary, bucket=codef_bucket)
 
         # DB 저장
         expires = datetime.now(timezone.utc) + timedelta(days=30)
@@ -277,15 +273,12 @@ async def codef_presc_fetch(
                 period_end_dt=period_end,
                 expires_at=expires,
             ))
->>>>>>> Stashed changes
 
         return {
             "exam_items": exam_items,
             "medications": medications,
             "health_summary": health_summary,
         }
-<<<<<<< Updated upstream
-=======
     except HTTPException:
         raise
     except Exception as e:
@@ -364,7 +357,7 @@ async def codef_presc_fetch(
 
         medications = codef_service.parse_prescription(presc_data)
 
-        s3_key = s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data}, bucket=settings.s3_codef_bucket_name)
+        s3_key = s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_data})
 
         # DB 저장
         expires = datetime.now(timezone.utc) + timedelta(days=30)
@@ -404,7 +397,6 @@ async def codef_presc_fetch(
         return {"medications": medications, "success": True}
     except HTTPException:
         raise
->>>>>>> Stashed changes
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

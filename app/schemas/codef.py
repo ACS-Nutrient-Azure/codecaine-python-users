@@ -42,3 +42,19 @@ class CodefPrescFetchRequest(BaseModel):
     token: str
     presc_start: Optional[str] = None
     presc_end: Optional[str] = None
+
+
+class CodefPrescInitResponse(BaseModel):
+    prescription_two_way: Optional[Dict] = None
+    token: str
+    presc_start: str = ""
+    presc_end: str = ""
+
+
+class CodefPrescFetchRequest(BaseModel):
+    cognito_id: str
+    user_info: CodefUserInfo
+    prescription_two_way: Dict
+    token: str
+    presc_start: Optional[str] = None
+    presc_end: Optional[str] = None
