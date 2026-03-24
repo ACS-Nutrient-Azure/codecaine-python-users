@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS external_healthcheck_import (
 CREATE TABLE IF NOT EXISTS codef_api_call_log (
     log_id            BIGSERIAL    NOT NULL,
     import_id         BIGINT       NOT NULL,
+    cognito_id        VARCHAR(36)  NOT NULL,
     api_kind          VARCHAR(50),                 -- healthcheck / rx_prescription
     agred_dt          DATE,                        -- 동의 일자 (컬럼명 오타 모델과 동일하게 유지)
     phone_hash        VARCHAR(64),                 -- SHA-256 해시 암호화된 전화번호
@@ -127,6 +128,7 @@ CREATE TABLE IF NOT EXISTS codef_api_call_log (
 CREATE TABLE IF NOT EXISTS prescription_medications (
     med_id          BIGSERIAL    NOT NULL,
     import_id       BIGINT       NOT NULL,
+    cognito_id      VARCHAR(36)  NOT NULL,
     api_kind        VARCHAR(50),                   -- healthcheck / rx_prescription
     data_type       VARCHAR(50),                   -- drug / blood_pressure / cholesterol / glucose 등
     name            VARCHAR(255),                  -- 약품명 또는 검진 항목명
