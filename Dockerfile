@@ -8,11 +8,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# OTel 추가
+RUN pip install --no-cache-dir opentelemetry-distro opentelemetry-exporter-otlp
+RUN opentelemetry-bootstrap -a install
+
 # 소스 코드 복사
 COPY . .
 
 # 포트 오픈
 EXPOSE 8000
 
-# 실행 — gunicorn + uvicorn worker (멀티 워커 안전)
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--workers", "2", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+# opentelemetry-instrument 앞에 추가
+CMD ["opentelemetry-instrument", "gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--workers", "2", "--bind", "0.0.0.0:8000", "--timeout", "120"]
