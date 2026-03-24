@@ -14,8 +14,6 @@ class Settings(BaseSettings):
     db_user: str = ""
     db_password: str = ""
 
-    history_database_url: str = ""
-
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:

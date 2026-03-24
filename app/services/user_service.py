@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserProfile
-from app.models.supplement import CurrentSupplement, IntakeSupplement
+from app.models.supplement import CurrentSupplement
 from app.schemas.user import (
     UserProfileResponse,
     UserProfileUpdateRequest,
@@ -118,57 +118,9 @@ class UserService:
         supplements = result.scalars().all()
         return [SupplementResponse.model_validate(s) for s in supplements]
 
-    async def _sync_to_history(
-        self, history_db: AsyncSession | None, supplement: CurrentSupplement
-    ) -> None:
-        """intake_supplements 테이블에 upsert (DMS 대체)"""
-        if history_db is None:
-            return
-        try:
-            result = await history_db.execute(
-                select(IntakeSupplement).where(
-                    IntakeSupplement.current_id == supplement.current_id,
-                    IntakeSupplement.cognito_id == supplement.cognito_id,
-                )
-            )
-            intake = result.scalar_one_or_none()
-            if intake is None:
-                intake = IntakeSupplement(
-                    current_id=supplement.current_id,
-                    cognito_id=supplement.cognito_id,
-                )
-                history_db.add(intake)
-            intake.itk_product_name = supplement.product_name
-            intake.itk_serving_amount = supplement.serving_amount
-            intake.itk_serving_per_day = supplement.serving_per_day
-            intake.itk_daily_total_amount = supplement.daily_total_amount
-            intake.is_active = supplement.is_active
-            await history_db.flush()
-        except Exception as e:
-            logger.warning("history DB 동기화 실패 (무시됨): %s", e)
-
-    async def _delete_from_history(
-        self, history_db: AsyncSession | None, current_id: int, cognito_id: str
-    ) -> None:
-        if history_db is None:
-            return
-        try:
-            result = await history_db.execute(
-                select(IntakeSupplement).where(
-                    IntakeSupplement.current_id == current_id,
-                    IntakeSupplement.cognito_id == cognito_id,
-                )
-            )
-            intake = result.scalar_one_or_none()
-            if intake:
-                await history_db.delete(intake)
-                await history_db.flush()
-        except Exception as e:
-            logger.warning("history DB 삭제 실패 (무시됨): %s", e)
-
     async def create_supplement(
         self, db: AsyncSession, cognito_id: str, data: SupplementCreateRequest,
-        email: str = "", history_db: AsyncSession | None = None
+        email: str = ""
     ) -> SupplementResponse:
         await self.get_or_create_user(db, cognito_id, email)
         supplement = CurrentSupplement(
@@ -182,12 +134,10 @@ class UserService:
         )
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def update_supplement(
         self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementUpdateRequest,
-        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -215,12 +165,10 @@ class UserService:
 
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def toggle_supplement_status(
         self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementStatusRequest,
-        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -235,12 +183,10 @@ class UserService:
         supplement.is_active = data.ans_is_active
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def delete_supplement(
         self, db: AsyncSession, cognito_id: str, current_id: int,
-        history_db: AsyncSession | None = None
     ) -> None:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -252,7 +198,6 @@ class UserService:
         if not supplement:
             raise HTTPException(status_code=404, detail="영양제를 찾을 수 없습니다.")
         await db.delete(supplement)
-        await self._delete_from_history(history_db, current_id, cognito_id)
 
     async def delete_user(self, db: AsyncSession, cognito_id: str) -> None:
         result = await db.execute(select(User).where(User.cognito_id == cognito_id))
