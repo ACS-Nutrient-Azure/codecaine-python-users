@@ -148,6 +148,7 @@ async def codef_fetch(
                 expires_at=expires,
             ))
 
+        await db.commit()
         return {
             "exam_items": exam_items,
             "health_summary": health_summary,
@@ -158,7 +159,7 @@ async def codef_fetch(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/presc-init", response_model=CodefPrescInitResponse)
+@router.post("/presc-init")
 async def codef_presc_init(
     user_info: CodefUserInfo,
     _: str = Depends(get_current_user_id),
@@ -186,135 +187,14 @@ async def codef_presc_init(
             ),
         )
 
+        two_way = _extract_two_way(presc_resp)
         return {
-            "prescription_two_way": _extract_two_way(presc_resp),
+            "prescription_two_way": two_way,
             "token": token,
             "presc_start": presc_start,
             "presc_end": presc_end,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/presc-fetch")
-async def codef_presc_fetch(
-    req: CodefPrescFetchRequest,
-    current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """처방기록 카카오 인증 완료 후 데이터 조회 (처방 2단계)"""
-    if current_user_id != req.cognito_id:
-        raise HTTPException(status_code=403, detail="본인의 처방 데이터만 조회할 수 있습니다.")
-    try:
-        loop = asyncio.get_running_loop()
-        current_year = date.today().year
-        presc_start = req.presc_start or f"{current_year - 1}0101"
-        presc_end = req.presc_end or date.today().strftime("%Y%m%d")
-
-        presc_data = await loop.run_in_executor(
-            None,
-            partial(
-                codef_service.fetch_prescription,
-                token=req.token,
-                user_name=req.user_info.user_name,
-                phone_no=req.user_info.phone_no,
-                identity=req.user_info.identity,
-                nhis_id=req.user_info.nhis_id,
-                start_date=presc_start,
-                end_date=presc_end,
-                two_way_info=req.prescription_two_way,
-            ),
-        )
-
-        medications = codef_service.parse_prescription(presc_data)
-
-        s3_key = s3_service.upload_json(req.cognito_id, "codef_raw.json", {
-            "prescription": presc_data,
-        })
-
-        # DB 저장
-        expires = datetime.now(timezone.utc) + timedelta(days=30)
-        import_record = ExternalHealthcheckImport(
-            cognito_id=req.cognito_id,
-            api_kind="rx_prescription",
-            source_s3_url=s3_key,
-            exprires_at=expires,
-        )
-        db.add(import_record)
-        await db.flush()  # import_id 확보
-
-        db.add(CodefApiCallLog(
-            import_id=import_record.import_id,
-            cognito_id=req.cognito_id,
-            api_kind="rx_prescription",
-            agred_dt=date.today(),
-            phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
-            codef_request_id=req.prescription_two_way.get("jti") if isinstance(req.prescription_two_way, dict) else None,
-            status=True,
-            expires_at=datetime.now(timezone.utc) + timedelta(days=365 * 3),
-        ))
-
-        period_start = datetime.strptime(presc_start, "%Y%m%d").date()
-        period_end = datetime.strptime(presc_end, "%Y%m%d").date()
-        for med in medications:
-            db.add(PrescriptionMedication(
-                import_id=import_record.import_id,
-                cognito_id=req.cognito_id,
-                api_kind="rx_prescription",
-                data_type="drug",
-                name=med["name"],
-                value=med["dose"],
-                unit=None,
-                period_start_dt=period_start,
-                period_end_dt=period_end,
-                expires_at=expires,
-            ))
-
-        return {
-            "medications": medications,
-            "_debug_presc_data": presc_data,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/presc-init", response_model=CodefPrescInitResponse)
-async def codef_presc_init(
-    user_info: CodefUserInfo,
-    _: str = Depends(get_current_user_id),
-):
-    """처방기록 카카오 인증 요청 (처방 1단계)"""
-    try:
-        loop = asyncio.get_running_loop()
-        token = await loop.run_in_executor(None, codef_service.get_access_token)
-
-        current_year = date.today().year
-        presc_start = f"{current_year - 1}0101"
-        presc_end = date.today().strftime("%Y%m%d")
-
-        presc_resp = await loop.run_in_executor(
-            None,
-            partial(
-                codef_service.request_prescription,
-                token=token,
-                user_name=user_info.user_name,
-                phone_no=user_info.phone_no,
-                identity=user_info.identity,
-                nhis_id=user_info.nhis_id,
-                start_date=presc_start,
-                end_date=presc_end,
-            ),
-        )
-
-        return {
-            "prescription_two_way": _extract_two_way(presc_resp),
-            "token": token,
-            "presc_start": presc_start,
-            "presc_end": presc_end,
+            "_debug_presc_resp": presc_resp,
+            "_debug_two_way": two_way,
         }
     except HTTPException:
         raise
@@ -369,6 +249,7 @@ async def codef_presc_fetch(
 
         db.add(CodefApiCallLog(
             import_id=import_record.import_id,
+            cognito_id=req.cognito_id,
             api_kind="rx_prescription",
             agred_dt=date.today(),
             phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
@@ -393,7 +274,11 @@ async def codef_presc_fetch(
             ))
 
         await db.commit()
-        return {"medications": medications, "success": True}
+        return {
+            "medications": medications,
+            "_debug_presc_data": presc_data,
+            "_debug_two_way_sent": req.prescription_two_way,
+        }
     except HTTPException:
         raise
     except Exception as e:
