@@ -78,7 +78,7 @@ async def codef_fetch(
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """CODEF 카카오 인증 완료 후 건강검진 데이터 조회 (2단계)"""
+    """CODEF 카카오 인증 완료 후 건강검진 + 처방기록 동시 조회 (2단계)"""
     if current_user_id != req.cognito_id:
         raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
     try:
@@ -86,43 +86,63 @@ async def codef_fetch(
         current_year = date.today().year
         hc_start_year = req.hc_start_year or str(current_year - 4)
         hc_end_year = req.hc_end_year or str(current_year)
+        presc_start = f"{current_year - 1}0101"
+        presc_end = date.today().strftime("%Y%m%d")
 
-        hc_data = await loop.run_in_executor(
-            None,
-            partial(
-                codef_service.fetch_health_check,
-                token=req.token,
-                user_name=req.user_info.user_name,
-                phone_no=req.user_info.phone_no,
-                identity=req.user_info.identity,
-                nhis_id=req.user_info.nhis_id,
-                start_year=hc_start_year,
-                end_year=hc_end_year,
-                two_way_info=req.health_check_two_way,
+        # 건강검진 + 처방기록 동시 조회
+        hc_data, presc_resp = await asyncio.gather(
+            loop.run_in_executor(
+                None,
+                partial(
+                    codef_service.fetch_health_check,
+                    token=req.token,
+                    user_name=req.user_info.user_name,
+                    phone_no=req.user_info.phone_no,
+                    identity=req.user_info.identity,
+                    nhis_id=req.user_info.nhis_id,
+                    start_year=hc_start_year,
+                    end_year=hc_end_year,
+                    two_way_info=req.health_check_two_way,
+                ),
+            ),
+            loop.run_in_executor(
+                None,
+                partial(
+                    codef_service.request_prescription,
+                    token=req.token,
+                    user_name=req.user_info.user_name,
+                    phone_no=req.user_info.phone_no,
+                    identity=req.user_info.identity,
+                    nhis_id=req.user_info.nhis_id,
+                    start_date=presc_start,
+                    end_date=presc_end,
+                ),
             ),
         )
 
         exam_items = codef_service.parse_health_check(hc_data)
         health_summary = codef_service.extract_health_summary(hc_data)
+        medications = codef_service.parse_prescription(presc_resp)
 
         codef_bucket = settings.s3_codef_bucket_name
         s3_key = s3_service.upload_json(req.cognito_id, "codef_hc_raw.json", {"health_check": hc_data}, bucket=codef_bucket)
         if health_summary is not None:
             s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary, bucket=codef_bucket)
+        s3_service.upload_json(req.cognito_id, "codef_presc_raw.json", {"prescription": presc_resp})
 
-        # DB 저장
+        # DB 저장 — 건강검진
         expires = datetime.now(timezone.utc) + timedelta(days=30)
-        import_record = ExternalHealthcheckImport(
+        hc_import = ExternalHealthcheckImport(
             cognito_id=req.cognito_id,
             api_kind="healthcheck",
             source_s3_url=s3_key,
             exprires_at=expires,
         )
-        db.add(import_record)
-        await db.flush()  # import_id 확보
+        db.add(hc_import)
+        await db.flush()
 
         db.add(CodefApiCallLog(
-            import_id=import_record.import_id,
+            import_id=hc_import.import_id,
             cognito_id=req.cognito_id,
             api_kind="healthcheck",
             agred_dt=date.today(),
@@ -136,7 +156,7 @@ async def codef_fetch(
         period_end = date(int(hc_end_year), 12, 31)
         for item in exam_items:
             db.add(PrescriptionMedication(
-                import_id=import_record.import_id,
+                import_id=hc_import.import_id,
                 cognito_id=req.cognito_id,
                 api_kind="healthcheck",
                 data_type=item["name"],
@@ -148,10 +168,46 @@ async def codef_fetch(
                 expires_at=expires,
             ))
 
+        # DB 저장 — 처방기록
+        presc_import = ExternalHealthcheckImport(
+            cognito_id=req.cognito_id,
+            api_kind="rx_prescription",
+            source_s3_url="codef_presc_raw.json",
+            exprires_at=expires,
+        )
+        db.add(presc_import)
+        await db.flush()
+
+        db.add(CodefApiCallLog(
+            import_id=presc_import.import_id,
+            cognito_id=req.cognito_id,
+            api_kind="rx_prescription",
+            agred_dt=date.today(),
+            phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
+            status=True,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=365 * 3),
+        ))
+
+        presc_period_start = date(int(presc_start[:4]), int(presc_start[4:6]), int(presc_start[6:]))
+        presc_period_end = date(int(presc_end[:4]), int(presc_end[4:6]), int(presc_end[6:]))
+        for med in medications:
+            db.add(PrescriptionMedication(
+                import_id=presc_import.import_id,
+                cognito_id=req.cognito_id,
+                api_kind="rx_prescription",
+                data_type="drug",
+                name=med["name"],
+                value=med["dose"],
+                period_start_dt=presc_period_start,
+                period_end_dt=presc_period_end,
+                expires_at=expires,
+            ))
+
         await db.commit()
         return {
             "exam_items": exam_items,
             "health_summary": health_summary,
+            "medications": medications,
         }
     except HTTPException:
         raise
