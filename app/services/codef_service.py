@@ -116,8 +116,6 @@ def request_prescription(token: str, user_name: str, phone_no: str, identity: st
         "drugImageYN": "0",
         "medicationDirectionYN": "1",
         "detailYN": "1",
-        "simpleAuth": "1",
-        "is2Way": True,
     }
     resp = requests.post(
         f"{CODEF_BASE_URL}/v1/kr/public/pp/nhis-treatment/information",
