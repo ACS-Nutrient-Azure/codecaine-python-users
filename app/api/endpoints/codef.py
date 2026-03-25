@@ -151,8 +151,6 @@ async def codef_fetch(
         return {
             "exam_items": exam_items,
             "health_summary": health_summary,
-            "_debug_s3_key": s3_key,
-            "_debug_bucket": codef_bucket or settings.s3_bucket_name,
         }
     except HTTPException:
         raise

@@ -29,7 +29,7 @@ def upload_json(cognito_id: str, filename: str, data: dict, bucket: str | None =
         return key
     except Exception as e:
         logger.warning("[S3] 업로드 실패 (계속 진행): %s", str(e))
-        return f"__ERROR__:{str(e)}"
+        return ""
 
 
 def download_json(cognito_id: str, filename: str, bucket: str | None = None) -> dict | None:
