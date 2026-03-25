@@ -162,9 +162,9 @@ async def codef_fetch(
 @router.post("/presc-init")
 async def codef_presc_init(
     user_info: CodefUserInfo,
-    _: str = Depends(get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id),
 ):
-    """처방기록 카카오 인증 요청 (처방 1단계)"""
+    """처방기록 조회 요청 (1단계) — 처방 API는 2단계 인증 없이 데이터 직접 반환"""
     try:
         loop = asyncio.get_running_loop()
         token = await loop.run_in_executor(None, codef_service.get_access_token)
@@ -187,14 +187,16 @@ async def codef_presc_init(
             ),
         )
 
+        # 처방 API는 init 단계에서 데이터 직접 반환 — S3에 캐싱
+        presc_data = presc_resp.get("data") if isinstance(presc_resp, dict) else presc_resp
+        s3_service.upload_json(current_user_id, "codef_presc_init_raw.json", {"prescription": presc_data})
+
         two_way = _extract_two_way(presc_resp)
         return {
             "prescription_two_way": two_way,
             "token": token,
             "presc_start": presc_start,
             "presc_end": presc_end,
-            "_debug_presc_resp": presc_resp,
-            "_debug_two_way": two_way,
         }
     except HTTPException:
         raise
@@ -217,20 +219,30 @@ async def codef_presc_fetch(
         presc_start = req.presc_start or f"{current_year - 1}0101"
         presc_end = req.presc_end or date.today().strftime("%Y%m%d")
 
-        presc_data = await loop.run_in_executor(
-            None,
-            partial(
-                codef_service.fetch_prescription,
-                token=req.token,
-                user_name=req.user_info.user_name,
-                phone_no=req.user_info.phone_no,
-                identity=req.user_info.identity,
-                nhis_id=req.user_info.nhis_id,
-                start_date=presc_start,
-                end_date=presc_end,
-                two_way_info=req.prescription_two_way,
-            ),
-        )
+        jti = req.prescription_two_way.get("jti", "") if isinstance(req.prescription_two_way, dict) else ""
+
+        if jti:
+            # 2단계 인증이 있는 경우 CODEF에서 직접 조회
+            presc_data = await loop.run_in_executor(
+                None,
+                partial(
+                    codef_service.fetch_prescription,
+                    token=req.token,
+                    user_name=req.user_info.user_name,
+                    phone_no=req.user_info.phone_no,
+                    identity=req.user_info.identity,
+                    nhis_id=req.user_info.nhis_id,
+                    start_date=presc_start,
+                    end_date=presc_end,
+                    two_way_info=req.prescription_two_way,
+                ),
+            )
+        else:
+            # 처방 API는 init 단계에서 이미 데이터 반환 — S3 캐시 사용
+            cached = s3_service.download_json(req.cognito_id, "codef_presc_init_raw.json")
+            if cached is None:
+                raise HTTPException(status_code=400, detail="처방 데이터를 먼저 요청해주세요.")
+            presc_data = cached.get("prescription", cached)
 
         medications = codef_service.parse_prescription(presc_data)
 
@@ -274,11 +286,7 @@ async def codef_presc_fetch(
             ))
 
         await db.commit()
-        return {
-            "medications": medications,
-            "_debug_presc_data": presc_data,
-            "_debug_two_way_sent": req.prescription_two_way,
-        }
+        return {"medications": medications}
     except HTTPException:
         raise
     except Exception as e:
