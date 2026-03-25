@@ -107,7 +107,7 @@ async def codef_fetch(
 
         codef_bucket = settings.s3_codef_bucket_name
         s3_key = s3_service.upload_json(req.cognito_id, "codef_hc_raw.json", {"health_check": hc_data}, bucket=codef_bucket)
-        if health_summary:
+        if health_summary is not None:
             s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary, bucket=codef_bucket)
 
         # DB 저장
@@ -409,7 +409,11 @@ async def get_health_data(
         raise HTTPException(status_code=403, detail="본인의 건강 데이터만 조회할 수 있습니다.")
     summary = s3_service.download_json(cognito_id, "health_summary.json", bucket=settings.s3_codef_bucket_name)
     if summary is None:
-        raise HTTPException(status_code=404, detail="저장된 건강 데이터가 없습니다.")
+        # health_summary.json이 없으면 raw 파일에서 추출 시도
+        raw = s3_service.download_json(cognito_id, "codef_hc_raw.json", bucket=settings.s3_codef_bucket_name)
+        if raw is None:
+            raise HTTPException(status_code=404, detail="저장된 건강 데이터가 없습니다.")
+        summary = codef_service.extract_health_summary(raw.get("health_check", raw))
     return summary
 
 
