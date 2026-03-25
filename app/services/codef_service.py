@@ -291,6 +291,21 @@ def parse_prescription(data) -> list:
         treat_list = d
     else:
         treat_list = d.get("resTreatList") or d.get("resList") or []
+
+    # 가장 최신 날짜의 처방 기록만 사용
+    if treat_list:
+        date_keys = ("resTreatDate", "resPrescribeDate", "resVisitDate", "resTreatYmd", "resDate")
+        def get_date(treat):
+            for k in date_keys:
+                v = treat.get(k)
+                if v:
+                    return str(v)
+            return ""
+        latest_date = max(get_date(t) for t in treat_list)
+        if latest_date:
+            treat_list = [t for t in treat_list if get_date(t) == latest_date]
+            logger.info("[CODEF presc] 최신 처방일 '%s' 기준 %d건 필터링", latest_date, len(treat_list))
+
     seen = set()
     for treat in treat_list:
         med_list = treat.get("resMedicineList") or treat.get("resMediDetailList") or []
