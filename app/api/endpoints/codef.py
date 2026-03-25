@@ -86,7 +86,7 @@ async def codef_fetch(
         current_year = date.today().year
         hc_start_year = req.hc_start_year or str(current_year - 4)
         hc_end_year = req.hc_end_year or str(current_year)
-        presc_start = f"{current_year - 1}0101"
+        presc_start = (date.today() - timedelta(days=365)).strftime("%Y%m%d")
         presc_end = date.today().strftime("%Y%m%d")
 
         # 건강검진 + 처방기록 동시 조회
