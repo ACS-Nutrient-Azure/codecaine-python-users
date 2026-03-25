@@ -229,20 +229,16 @@ async def codef_presc_fetch(
         )
 
         medications = codef_service.parse_prescription(presc_data)
-        health_summary = codef_service.extract_health_summary(hc_data)
 
         s3_key = s3_service.upload_json(req.cognito_id, "codef_raw.json", {
-            "health_check": hc_data,
             "prescription": presc_data,
         })
-        if health_summary:
-            s3_service.upload_json(req.cognito_id, "health_summary.json", health_summary)
 
         # DB 저장
         expires = datetime.now(timezone.utc) + timedelta(days=30)
         import_record = ExternalHealthcheckImport(
             cognito_id=req.cognito_id,
-            api_kind="healthcheck",
+            api_kind="rx_prescription",
             source_s3_url=s3_key,
             exprires_at=expires,
         )
@@ -251,33 +247,33 @@ async def codef_presc_fetch(
 
         db.add(CodefApiCallLog(
             import_id=import_record.import_id,
-            api_kind="healthcheck",
+            cognito_id=req.cognito_id,
+            api_kind="rx_prescription",
             agred_dt=date.today(),
             phone_hash=hashlib.sha256(req.user_info.phone_no.encode()).hexdigest(),
-            codef_request_id=req.health_check_two_way.get("jti") if isinstance(req.health_check_two_way, dict) else None,
+            codef_request_id=req.prescription_two_way.get("jti") if isinstance(req.prescription_two_way, dict) else None,
             status=True,
             expires_at=datetime.now(timezone.utc) + timedelta(days=365 * 3),
         ))
 
-        period_start = date(int(hc_start_year), 1, 1)
-        period_end = date(int(hc_end_year), 12, 31)
-        for item in exam_items:
+        period_start = datetime.strptime(presc_start, "%Y%m%d").date()
+        period_end = datetime.strptime(presc_end, "%Y%m%d").date()
+        for med in medications:
             db.add(PrescriptionMedication(
                 import_id=import_record.import_id,
-                api_kind="healthcheck",
-                data_type=item["name"],
-                name=item["name"],
-                value=item["value"],
-                unit=item["unit"],
+                cognito_id=req.cognito_id,
+                api_kind="rx_prescription",
+                data_type="drug",
+                name=med["name"],
+                value=med["dose"],
+                unit=None,
                 period_start_dt=period_start,
                 period_end_dt=period_end,
                 expires_at=expires,
             ))
 
         return {
-            "exam_items": exam_items,
             "medications": medications,
-            "health_summary": health_summary,
         }
     except HTTPException:
         raise
