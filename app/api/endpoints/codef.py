@@ -274,6 +274,7 @@ async def codef_presc_fetch(
 
         return {
             "medications": medications,
+            "_debug_presc_data": presc_data,
         }
     except HTTPException:
         raise
