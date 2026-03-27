@@ -15,12 +15,28 @@ from app.schemas.user import (
     SupplementStatusRequest,
     SupplementScanResponse,
     UserDeleteResponse,
+    ConditionSnapshotRequest,
+    ConditionSnapshotResponse,
 )
 from app.services.scan_service import scan_supplement_image
 from app.services.user_service import user_service
 
 # --- Users Router ---
 router = APIRouter(prefix="/users", tags=["마이페이지"])
+
+
+@router.post("/{cognito_id}/condition-snapshot", response_model=ConditionSnapshotResponse)
+async def save_condition_snapshot(
+    cognito_id: str,
+    data: ConditionSnapshotRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """분석 목적(purpose) 저장 — user_condition_snapshots"""
+    if current_user.cognito_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 정보만 저장할 수 있습니다.")
+    await user_service.save_condition_snapshot(db, cognito_id, data.purposes)
+    return ConditionSnapshotResponse()
 
 
 @router.get("/{cognito_id}", response_model=UserProfileResponse)
