@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User, UserProfile
+from app.models.user import User, UserProfile, UserConditionSnapshot
 from app.models.supplement import CurrentSupplement
 from app.schemas.user import (
     UserProfileResponse,
@@ -209,6 +209,11 @@ class UserService:
         if not supplement:
             raise HTTPException(status_code=404, detail="영양제를 찾을 수 없습니다.")
         await db.delete(supplement)
+
+    async def save_condition_snapshot(self, db: AsyncSession, cognito_id: str, purposes: list[str]) -> None:
+        status = ", ".join(purposes) if purposes else ""
+        snapshot = UserConditionSnapshot(cognito_id=cognito_id, status=status)
+        db.add(snapshot)
 
     async def delete_user(self, db: AsyncSession, cognito_id: str) -> None:
         result = await db.execute(select(User).where(User.cognito_id == cognito_id))

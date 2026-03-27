@@ -367,6 +367,51 @@ async def get_health_data(
     return summary
 
 
+@router.get("/internal-service/{cognito_id}")
+async def get_internal_service_data(
+    cognito_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """서비스 간 내부 호출 전용 — JWT 인증 없음 (VPC 내부에서만 접근 가능)
+
+    Analysis Backend의 /chat-calculate가 사용자 JWT 없이 CODEF 데이터를 조회할 때 사용.
+    외부 인터넷에 노출되지 않도록 API Gateway / ALB에서 차단 필요.
+    """
+    stmt = (
+        select(PrescriptionMedication)
+        .join(
+            ExternalHealthcheckImport,
+            PrescriptionMedication.import_id == ExternalHealthcheckImport.import_id,
+        )
+        .where(ExternalHealthcheckImport.cognito_id == cognito_id)
+        .order_by(PrescriptionMedication.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    codef_health_data = {}
+    medication_info = []
+
+    for row in rows:
+        if row.api_kind == "rx_prescription":
+            medication_info.append({
+                "name": row.name,
+                "dose": row.value,
+                "usage": row.unit,
+            })
+        elif row.api_kind == "healthcheck":
+            key = row.name or row.data_type
+            codef_health_data[key] = row.value
+
+    summary = s3_service.download_json(cognito_id, "health_summary.json") or {}
+    codef_health_data.update({k: v for k, v in summary.items() if k not in codef_health_data})
+
+    return {
+        "codef_health_data": codef_health_data,
+        "medication_info": medication_info,
+    }
+
+
 @router.get("/internal-call/{cognito_id}")
 async def get_internal_call_data(
     cognito_id: str,

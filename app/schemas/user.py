@@ -82,6 +82,15 @@ class UserDeleteResponse(BaseModel):
     message: str = "회원 탈퇴가 완료되었습니다."
 
 
+class ConditionSnapshotRequest(BaseModel):
+    purposes: list[str]
+
+
+class ConditionSnapshotResponse(BaseModel):
+    success: bool = True
+    message: str = "현재 상태가 저장되었습니다."
+
+
 class SupplementScanParsedResult(BaseModel):
     """파싱된 영양제 정보"""
     ans_product_name: str | None = None
