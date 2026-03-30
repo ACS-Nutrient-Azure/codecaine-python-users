@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -59,6 +60,11 @@ class UserService:
                 logger.warning("[USER] email=%s 이미 다른 계정에 존재. 이메일 동기화 생략.", email)
                 result = await db.execute(select(User).where(User.cognito_id == cognito_id))
                 user = result.scalar_one_or_none()
+
+        # 마지막 접속 시간 갱신
+        user.last_login_at = datetime.now(timezone.utc)
+        db.add(user)
+        await db.flush()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:
@@ -88,6 +94,7 @@ class UserService:
             ans_current_conditions=None,
             created_at=user.created_at,
             updated_at=profile.updated_at,
+            last_login_at=user.last_login_at,
         )
 
     async def update_profile(

@@ -26,6 +26,7 @@ interface Profile {
   ans_allergies: string | null;
   ans_chron_diseases: string | null;
   ans_current_conditions: string | null;
+  last_login_at: string | null;
 }
 
 const ICONS = ['🟠', '🟡', '🟢', '🔵', '🟣'];
@@ -342,6 +343,7 @@ export function MyPage() {
                     { label: '성별', value: genderDisplay, editKey: 'ans_gender' },
                     { label: '체중', value: profile?.ans_weight ? `${profile.ans_weight} kg` : '-', editKey: 'ans_weight' },
                     { label: '키', value: profile?.ans_height ? `${profile.ans_height} cm` : '-', editKey: 'ans_height' },
+                    { label: '마지막 접속', value: profile?.last_login_at ? new Date(profile.last_login_at).toLocaleString('ko-KR') : '-', editKey: null },
                   ].map(item => (
                     <div key={item.label} className="flex items-center gap-2">
                       <span className="text-gray-600 w-20">• {item.label}</span>

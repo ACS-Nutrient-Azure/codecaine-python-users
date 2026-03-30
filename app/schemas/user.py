@@ -14,6 +14,7 @@ class UserProfileResponse(BaseModel):
     ans_current_conditions: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    last_login_at: datetime | None = None
 
 
 class UserProfileUpdateRequest(BaseModel):
