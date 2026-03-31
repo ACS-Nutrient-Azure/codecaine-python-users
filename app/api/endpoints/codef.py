@@ -137,7 +137,7 @@ async def codef_fetch(
             cognito_id=req.cognito_id,
             api_kind="rx_prescription",
             source_s3_url=s3_key,
-            expires_at=expires,
+            exprires_at=expires,
         )
         db.add(import_record)
         await db.flush()
@@ -306,7 +306,7 @@ async def codef_presc_fetch(
             cognito_id=req.cognito_id,
             api_kind="rx_prescription",
             source_s3_url=s3_key,
-            expires_at=expires,
+            exprires_at=expires,
         )
         db.add(import_record)
         await db.flush()  # import_id 확보
