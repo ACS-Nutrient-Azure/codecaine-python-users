@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS external_healthcheck_import (
     cognito_id   VARCHAR(36)  NOT NULL,
     api_kind     VARCHAR(50),                      -- healthcheck / rx_prescription
     source_s3_url TEXT,                            -- 원본 데이터 S3 경로
-    exprires_at  TIMESTAMPTZ,                      -- 1개월 후 삭제 (컬럼명 오타 모델과 동일하게 유지)
+    expires_at   TIMESTAMPTZ,                      -- 1개월 후 삭제
     created_at   TIMESTAMPTZ  DEFAULT NOW(),
     CONSTRAINT pk_external_healthcheck_import PRIMARY KEY (import_id),
     CONSTRAINT fk_external_healthcheck_import_users FOREIGN KEY (cognito_id) REFERENCES users (cognito_id) ON DELETE CASCADE

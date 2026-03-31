@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# OTel 추가
-RUN pip install --no-cache-dir opentelemetry-distro opentelemetry-exporter-otlp
+# OTel 추가 (aws-opentelemetry-distro: X-Ray ID 생성 포함)
+RUN pip install --no-cache-dir aws-opentelemetry-distro opentelemetry-exporter-otlp
 RUN opentelemetry-bootstrap -a install
 
 # 소스 코드 복사

@@ -9,6 +9,7 @@ from app.schemas.codef import (
 )
 from app.core.config import settings
 from app.models.codef import ExternalHealthcheckImport, PrescriptionMedication, CodefApiCallLog
+from app.models.user import UserProfile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.security import get_current_user_id
@@ -136,7 +137,7 @@ async def codef_fetch(
             cognito_id=req.cognito_id,
             api_kind="healthcheck",
             source_s3_url=s3_key,
-            exprires_at=expires,
+            expires_at=expires,
         )
         db.add(hc_import)
         await db.flush()
@@ -173,7 +174,7 @@ async def codef_fetch(
             cognito_id=req.cognito_id,
             api_kind="rx_prescription",
             source_s3_url="codef_presc_raw.json",
-            exprires_at=expires,
+            expires_at=expires,
         )
         db.add(presc_import)
         await db.flush()
@@ -202,6 +203,21 @@ async def codef_fetch(
                 period_end_dt=presc_period_end,
                 expires_at=expires,
             ))
+
+        # health_summary의 키/몸무게를 user_profile에 반영 (미설정 시에만)
+        if health_summary:
+            result = await db.execute(
+                select(UserProfile).where(UserProfile.cognito_id == req.cognito_id)
+            )
+            profile = result.scalar_one_or_none()
+            if profile is None:
+                profile = UserProfile(cognito_id=req.cognito_id)
+                db.add(profile)
+            if health_summary.get("height") and not profile.height:
+                profile.height = health_summary["height"]
+            if health_summary.get("weight") and not profile.weight:
+                profile.weight = health_summary["weight"]
+            await db.flush()
 
         await db.commit()
         return {
@@ -310,7 +326,7 @@ async def codef_presc_fetch(
             cognito_id=req.cognito_id,
             api_kind="rx_prescription",
             source_s3_url=s3_key,
-            exprires_at=expires,
+            expires_at=expires,
         )
         db.add(import_record)
         await db.flush()  # import_id 확보
