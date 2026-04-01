@@ -417,7 +417,7 @@ async def _build_codef_response(cognito_id: str, db: AsyncSession) -> dict:
             codef_health_data[key] = row.value
 
     # height, weight, exam_date 등 S3 health_summary로 보완
-    summary = s3_service.download_json(cognito_id, "health_summary.json") or {}
+    summary = await asyncio.to_thread(s3_service.download_json, cognito_id, "health_summary.json") or {}
     codef_health_data.update({k: v for k, v in summary.items() if k not in codef_health_data})
 
     return {
