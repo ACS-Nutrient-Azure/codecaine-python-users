@@ -2,17 +2,13 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.security import create_test_token
-from app.core.telemetry import setup_telemetry
 from app.api.router import api_router
 from app.db.database import engine, Base
 from app.models import user, supplement  # noqa: F401 — Base.metadata 등록용
-
-setup_telemetry()
 
 app = FastAPI(
     title=settings.app_name,
@@ -31,8 +27,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
-
-FastAPIInstrumentor.instrument_app(app)
 
 
 @app.on_event("startup")
