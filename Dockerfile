@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8000
 
 # 실행 — gunicorn + uvicorn worker (멀티 워커 안전)
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--workers", "2", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--workers", "1", "--bind", "0.0.0.0:8000", "--timeout", "120"]

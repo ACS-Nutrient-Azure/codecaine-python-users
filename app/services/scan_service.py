@@ -13,6 +13,20 @@ from app.schemas.user import SupplementScanConfidence, SupplementScanParsedResul
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB
 
+_textract_client = None
+
+
+def _get_textract_client():
+    global _textract_client
+    if _textract_client is None:
+        _textract_client = boto3.client(
+            "textract",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id or None,
+            aws_secret_access_key=settings.aws_secret_access_key or None,
+        )
+    return _textract_client
+
 # 정규식 패턴 (한국어/영어 영양성분표 기준)
 _PRODUCT_PATTERNS = [
     re.compile(r"제품명\s*[:：]\s*(.+)"),
@@ -59,12 +73,7 @@ def _is_noise_line(line: str) -> bool:
 
 def _call_textract(image_bytes: bytes) -> str:
     """AWS Textract 동기 호출 (run_in_executor로 감싸서 사용)"""
-    client = boto3.client(
-        "textract",
-        region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key_id or None,
-        aws_secret_access_key=settings.aws_secret_access_key or None,
-    )
+    client = _get_textract_client()
     response = client.detect_document_text(Document={"Bytes": image_bytes})
     lines = [
         block["Text"]
