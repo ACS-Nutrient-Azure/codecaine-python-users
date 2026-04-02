@@ -6,13 +6,18 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_s3_client = None
+
 
 def _get_client():
-    kwargs = {"region_name": settings.aws_region}
-    if settings.aws_access_key_id and settings.aws_secret_access_key:
-        kwargs["aws_access_key_id"] = settings.aws_access_key_id
-        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
-    return boto3.client("s3", **kwargs)
+    global _s3_client
+    if _s3_client is None:
+        kwargs = {"region_name": settings.aws_region}
+        if settings.aws_access_key_id and settings.aws_secret_access_key:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+        _s3_client = boto3.client("s3", **kwargs)
+    return _s3_client
 
 
 def upload_json(cognito_id: str, filename: str, data: dict, bucket: str | None = None) -> str:
