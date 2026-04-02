@@ -14,6 +14,7 @@ class UserProfileResponse(BaseModel):
     ans_current_conditions: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    last_login_at: datetime | None = None
 
 
 class UserProfileUpdateRequest(BaseModel):
@@ -80,6 +81,15 @@ class SupplementCreateResponse(BaseModel):
 
 class UserDeleteResponse(BaseModel):
     message: str = "회원 탈퇴가 완료되었습니다."
+
+
+class ConditionSnapshotRequest(BaseModel):
+    purposes: list[str]
+
+
+class ConditionSnapshotResponse(BaseModel):
+    success: bool = True
+    message: str = "현재 상태가 저장되었습니다."
 
 
 class SupplementScanParsedResult(BaseModel):

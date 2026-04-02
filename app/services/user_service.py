@@ -1,12 +1,13 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User, UserProfile
-from app.models.supplement import CurrentSupplement, IntakeSupplement
+from app.models.user import User, UserProfile, UserConditionSnapshot
+from app.models.supplement import CurrentSupplement, CurrentIngredient
 from app.schemas.user import (
     UserProfileResponse,
     UserProfileUpdateRequest,
@@ -42,20 +43,28 @@ class UserService:
                 await db.flush()
             except IntegrityError:
                 await db.rollback()
-                # flush 실패 시 재조회 (동시 요청으로 이미 생성된 경우)
+                # 동시 요청으로 이미 생성된 경우 재조회
                 result = await db.execute(select(User).where(User.cognito_id == cognito_id))
                 user = result.scalar_one_or_none()
                 if not user:
                     raise
         elif email and user.email != email:
             # Cognito 토큰의 이메일이 DB와 다르면 최신 이메일로 동기화
-            # 단, 해당 email이 다른 계정에 없는 경우에만 업데이트
-            existing = await db.execute(select(User).where(User.email == email))
-            existing_user = existing.scalar_one_or_none()
-            if not existing_user or existing_user.cognito_id == cognito_id:
+            try:
                 user.email = email
                 db.add(user)
                 await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # 다른 계정에 동일 이메일이 있으면 업데이트 생략
+                logger.warning("[USER] email=%s 이미 다른 계정에 존재. 이메일 동기화 생략.", email)
+                result = await db.execute(select(User).where(User.cognito_id == cognito_id))
+                user = result.scalar_one_or_none()
+
+        # 마지막 접속 시간 갱신
+        user.last_login_at = datetime.now(timezone.utc)
+        db.add(user)
+        await db.flush()
         return user
 
     async def get_or_create_profile(self, db: AsyncSession, cognito_id: str) -> UserProfile:
@@ -85,6 +94,7 @@ class UserService:
             ans_current_conditions=None,
             created_at=user.created_at,
             updated_at=profile.updated_at,
+            last_login_at=user.last_login_at,
         )
 
     async def update_profile(
@@ -126,57 +136,9 @@ class UserService:
         supplements = result.scalars().all()
         return [SupplementResponse.model_validate(s) for s in supplements]
 
-    async def _sync_to_history(
-        self, history_db: AsyncSession | None, supplement: CurrentSupplement
-    ) -> None:
-        """intake_supplements 테이블에 upsert (DMS 대체)"""
-        if history_db is None:
-            return
-        try:
-            result = await history_db.execute(
-                select(IntakeSupplement).where(
-                    IntakeSupplement.current_id == supplement.current_id,
-                    IntakeSupplement.cognito_id == supplement.cognito_id,
-                )
-            )
-            intake = result.scalar_one_or_none()
-            if intake is None:
-                intake = IntakeSupplement(
-                    current_id=supplement.current_id,
-                    cognito_id=supplement.cognito_id,
-                )
-                history_db.add(intake)
-            intake.itk_product_name = supplement.product_name
-            intake.itk_serving_amount = supplement.serving_amount
-            intake.itk_serving_per_day = supplement.serving_per_day
-            intake.itk_daily_total_amount = supplement.daily_total_amount
-            intake.is_active = supplement.is_active
-            await history_db.flush()
-        except Exception as e:
-            logger.warning("history DB 동기화 실패 (무시됨): %s", e)
-
-    async def _delete_from_history(
-        self, history_db: AsyncSession | None, current_id: int, cognito_id: str
-    ) -> None:
-        if history_db is None:
-            return
-        try:
-            result = await history_db.execute(
-                select(IntakeSupplement).where(
-                    IntakeSupplement.current_id == current_id,
-                    IntakeSupplement.cognito_id == cognito_id,
-                )
-            )
-            intake = result.scalar_one_or_none()
-            if intake:
-                await history_db.delete(intake)
-                await history_db.flush()
-        except Exception as e:
-            logger.warning("history DB 삭제 실패 (무시됨): %s", e)
-
     async def create_supplement(
         self, db: AsyncSession, cognito_id: str, data: SupplementCreateRequest,
-        email: str = "", history_db: AsyncSession | None = None
+        email: str = ""
     ) -> SupplementResponse:
         await self.get_or_create_user(db, cognito_id, email)
         supplement = CurrentSupplement(
@@ -190,12 +152,20 @@ class UserService:
         )
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
+
+        if data.ans_ingredients:
+            for name, amount in data.ans_ingredients.items():
+                db.add(CurrentIngredient(
+                    current_id=supplement.current_id,
+                    ingredient_name=name,
+                    nutrient_amount=int(amount),
+                ))
+            await db.flush()
+
         return SupplementResponse.model_validate(supplement)
 
     async def update_supplement(
         self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementUpdateRequest,
-        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -223,12 +193,10 @@ class UserService:
 
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def toggle_supplement_status(
         self, db: AsyncSession, cognito_id: str, current_id: int, data: SupplementStatusRequest,
-        history_db: AsyncSession | None = None
     ) -> SupplementResponse:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -243,12 +211,10 @@ class UserService:
         supplement.is_active = data.ans_is_active
         db.add(supplement)
         await db.flush()
-        await self._sync_to_history(history_db, supplement)
         return SupplementResponse.model_validate(supplement)
 
     async def delete_supplement(
         self, db: AsyncSession, cognito_id: str, current_id: int,
-        history_db: AsyncSession | None = None
     ) -> None:
         result = await db.execute(
             select(CurrentSupplement).where(
@@ -260,7 +226,11 @@ class UserService:
         if not supplement:
             raise HTTPException(status_code=404, detail="영양제를 찾을 수 없습니다.")
         await db.delete(supplement)
-        await self._delete_from_history(history_db, current_id, cognito_id)
+
+    async def save_condition_snapshot(self, db: AsyncSession, cognito_id: str, purposes: list[str]) -> None:
+        status = ", ".join(purposes) if purposes else ""
+        snapshot = UserConditionSnapshot(cognito_id=cognito_id, status=status)
+        db.add(snapshot)
 
     async def delete_user(self, db: AsyncSession, cognito_id: str) -> None:
         result = await db.execute(select(User).where(User.cognito_id == cognito_id))

@@ -6,7 +6,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 CODEF_TOKEN_URL = "https://oauth.codef.io/oauth/token"
-
+CODEF_BASE_URL = "https://development.codef.io"
 
 def _parse_response(resp: requests.Response) -> dict:
     """CODEF 응답 파싱 — 빈 응답·비JSON·URL인코딩 응답 모두 처리"""
@@ -27,7 +27,7 @@ def _parse_response(resp: requests.Response) -> dict:
 def get_access_token() -> str:
     resp = requests.post(
         CODEF_TOKEN_URL,
-        params={"grant_type": "client_credentials", "scope": "read"},
+        data={"grant_type": "client_credentials", "scope": "read"},
         auth=(settings.codef_client_id, settings.codef_client_secret),
         timeout=10,
     )
@@ -121,10 +121,15 @@ def request_prescription(token: str, user_name: str, phone_no: str, identity: st
         f"{CODEF_BASE_URL}/v1/kr/public/pp/nhis-treatment/information",
         json=payload,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
+        timeout=180,
     )
     resp.raise_for_status()
-    return _parse_response(resp)
+    result = _parse_response(resp)
+    logger.info("[CODEF presc-init raw response] type=%s keys=%s", type(result).__name__, list(result.keys()) if isinstance(result, dict) else result[:2] if isinstance(result, list) else result)
+    if isinstance(result, dict):
+        data = result.get("data")
+        logger.info("[CODEF presc-init data] type=%s value=%s", type(data).__name__, str(data)[:300])
+    return result
 
 
 def fetch_prescription(token: str, user_name: str, phone_no: str, identity: str, nhis_id: str, start_date: str, end_date: str, two_way_info: dict) -> dict:
@@ -275,32 +280,55 @@ def parse_health_check(data: dict) -> list:
     return items
 
 
-def parse_prescription(data: dict) -> list:
+def parse_prescription(data) -> list:
     meds = []
-    d = data.get("data", {})
+    if isinstance(data, list):
+        d = {}
+    else:
+        d = data.get("data", {}) if isinstance(data, dict) else {}
 
-    treat_list = d.get("resTreatList") or d.get("resList") or []
+    if isinstance(d, list):
+        treat_list = d
+    else:
+        treat_list = d.get("resTreatList") or d.get("resList") or []
+
+    # 가장 최신 날짜의 처방 기록만 사용
+    if treat_list:
+        date_keys = ("resTreatDate", "resPrescribeDate", "resVisitDate", "resTreatYmd", "resDate")
+        def get_date(treat):
+            for k in date_keys:
+                v = treat.get(k)
+                if v:
+                    return str(v)
+            return ""
+        latest_date = max(get_date(t) for t in treat_list)
+        if latest_date:
+            treat_list = [t for t in treat_list if get_date(t) == latest_date]
+            logger.info("[CODEF presc] 최신 처방일 '%s' 기준 %d건 필터링", latest_date, len(treat_list))
+
     seen = set()
     for treat in treat_list:
         med_list = treat.get("resMedicineList") or treat.get("resMediDetailList") or []
         for med in med_list:
-            name = med.get("resProductName") or med.get("resDrugName") or ""
+            name = med.get("resProductName") or med.get("resDrugName") or med.get("resPrescribeDrugName") or ""
             if not name or name in seen:
                 continue
             seen.add(name)
             meds.append({
+                "id": len(meds) + 1,
                 "name": name,
-                "dose": med.get("resOneDayDose") or med.get("resDose") or "-",
-                "schedule": med.get("resMedicationInfo") or med.get("resUsage") or "-",
+                "dose": med.get("resOneDayDose") or med.get("resDose") or med.get("resPrescribeDays") or "-",
+                "schedule": med.get("resMedicationInfo") or med.get("resUsage") or med.get("resPrescribeDrugEffect") or "-",
             })
 
     if not meds:
-        for med in d.get("resMediDetailList") or []:
-            name = med.get("resProductName") or med.get("resDrugName") or ""
+        for med in (d.get("resMediDetailList") if isinstance(d, dict) else None) or []:
+            name = med.get("resProductName") or med.get("resDrugName") or med.get("resPrescribeDrugName") or ""
             if not name or name in seen:
                 continue
             seen.add(name)
             meds.append({
+                "id": len(meds) + 1,
                 "name": name,
                 "dose": med.get("resOneDayDose") or med.get("resDose") or "-",
                 "schedule": med.get("resMedicationInfo") or med.get("resUsage") or "-",

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user, get_current_user_id, CurrentUser
-from app.db.database import get_db, get_history_db
+from app.db.database import get_db
 from app.schemas.user import (
     UserProfileResponse,
     UserProfileUpdateRequest,
@@ -15,12 +15,28 @@ from app.schemas.user import (
     SupplementStatusRequest,
     SupplementScanResponse,
     UserDeleteResponse,
+    ConditionSnapshotRequest,
+    ConditionSnapshotResponse,
 )
 from app.services.scan_service import scan_supplement_image
 from app.services.user_service import user_service
 
 # --- Users Router ---
 router = APIRouter(prefix="/users", tags=["마이페이지"])
+
+
+@router.post("/{cognito_id}/condition-snapshot", response_model=ConditionSnapshotResponse)
+async def save_condition_snapshot(
+    cognito_id: str,
+    data: ConditionSnapshotRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """분석 목적(purpose) 저장 — user_condition_snapshots"""
+    if current_user.cognito_id != cognito_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 정보만 저장할 수 있습니다.")
+    await user_service.save_condition_snapshot(db, cognito_id, data.purposes)
+    return ConditionSnapshotResponse()
 
 
 @router.get("/{cognito_id}", response_model=UserProfileResponse)
@@ -85,12 +101,11 @@ async def create_supplement(
     data: SupplementCreateRequest,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    history_db: AsyncSession = Depends(get_history_db),
 ):
     """영양제 추가"""
     if current_user.cognito_id != data.cognito_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 영양제만 추가할 수 있습니다.")
-    created = await user_service.create_supplement(db, data.cognito_id, data, current_user.email, history_db)
+    created = await user_service.create_supplement(db, data.cognito_id, data, current_user.email)
     return SupplementCreateResponse(ans_current_id=created.ans_current_id)
 
 
@@ -118,10 +133,9 @@ async def update_supplement(
     data: SupplementUpdateRequest,
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-    history_db: AsyncSession = Depends(get_history_db),
 ):
     """영양제 수정"""
-    return await user_service.update_supplement(db, current_user_id, ans_current_id, data, history_db)
+    return await user_service.update_supplement(db, current_user_id, ans_current_id, data)
 
 
 @supplement_router.delete("/{ans_current_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -129,10 +143,9 @@ async def delete_supplement(
     ans_current_id: int,
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-    history_db: AsyncSession = Depends(get_history_db),
 ):
     """영양제 삭제"""
-    await user_service.delete_supplement(db, current_user_id, ans_current_id, history_db)
+    await user_service.delete_supplement(db, current_user_id, ans_current_id)
 
 
 @supplement_router.patch("/{ans_current_id}/status", response_model=SupplementResponse)
@@ -141,7 +154,6 @@ async def toggle_supplement_status(
     data: SupplementStatusRequest,
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-    history_db: AsyncSession = Depends(get_history_db),
 ):
     """영양제 활성화/비활성화"""
-    return await user_service.toggle_supplement_status(db, current_user_id, ans_current_id, data, history_db)
+    return await user_service.toggle_supplement_status(db, current_user_id, ans_current_id, data)

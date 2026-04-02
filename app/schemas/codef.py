@@ -14,21 +14,31 @@ class CodefUserInfo(BaseModel):
 
 class CodefInitResponse(BaseModel):
     health_check_two_way: Optional[Dict] = None
-    prescription_two_way: Optional[Dict] = None
     token: str
     hc_start_year: str = ""
     hc_end_year: str = ""
-    presc_start: str = ""
-    presc_end: str = ""
 
 
 class CodefFetchRequest(BaseModel):
     cognito_id: str
     user_info: CodefUserInfo
     health_check_two_way: Dict
-    prescription_two_way: Dict
     token: str
     hc_start_year: Optional[str] = None
     hc_end_year: Optional[str] = None
+
+
+class CodefPrescInitResponse(BaseModel):
+    prescription_two_way: Optional[Dict] = None
+    token: str
+    presc_start: str = ""
+    presc_end: str = ""
+
+
+class CodefPrescFetchRequest(BaseModel):
+    cognito_id: str
+    user_info: CodefUserInfo
+    prescription_two_way: Dict
+    token: str
     presc_start: Optional[str] = None
     presc_end: Optional[str] = None

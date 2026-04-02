@@ -14,8 +14,6 @@ class Settings(BaseSettings):
     db_user: str = ""
     db_password: str = ""
 
-    history_database_url: str = ""
-
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:
@@ -39,6 +37,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     s3_bucket_name: str = ""
+    s3_codef_bucket_name: str = ""
 
     # CODEF
     codef_client_id: str = ""

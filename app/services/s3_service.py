@@ -20,12 +20,12 @@ def _get_client():
     return _s3_client
 
 
-def upload_json(cognito_id: str, filename: str, data: dict) -> str:
+def upload_json(cognito_id: str, filename: str, data: dict, bucket: str | None = None) -> str:
     key = f"health-data/{cognito_id}/{filename}"
     try:
         client = _get_client()
         client.put_object(
-            Bucket=settings.s3_bucket_name,
+            Bucket=bucket or settings.s3_bucket_name,
             Key=key,
             Body=json.dumps(data, ensure_ascii=False, default=str),
             ContentType="application/json",
@@ -37,11 +37,11 @@ def upload_json(cognito_id: str, filename: str, data: dict) -> str:
         return ""
 
 
-def download_json(cognito_id: str, filename: str) -> dict | None:
+def download_json(cognito_id: str, filename: str, bucket: str | None = None) -> dict | None:
     key = f"health-data/{cognito_id}/{filename}"
     try:
         client = _get_client()
-        response = client.get_object(Bucket=settings.s3_bucket_name, Key=key)
+        response = client.get_object(Bucket=bucket or settings.s3_bucket_name, Key=key)
         content = response["Body"].read().decode("utf-8")
         return json.loads(content)
     except ClientError as e:

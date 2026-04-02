@@ -24,7 +24,37 @@
       "Bash(cd \"C:/Users/YPGN/Documents/GitHub/codecaine-python-mypage\" && gh run list --limit 5)",
       "Bash(where gh:*)",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" run list --repo ACS-Nutrients/codecaine-python-mypage --limit 5 2>/dev/null || \\\\\n\"/c/Users/YPGN/AppData/Local/GitHubDesktop/app-3.4.9/resources/app/git/mingw64/bin/gh.exe\" run list 2>/dev/null || \\\\\npowershell.exe -Command \"gh run list --repo ACS-Nutrients/codecaine-python-mypage --limit 5\" 2>/dev/null)",
-      "Bash(aws sts:*)"
+      "Bash(aws sts:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(find C:UsersYPGNDocumentsGitHubcodecaine-python-users -name codef* -type f)",
+      "Bash(gh run:*)",
+      "Bash(cat /c/Users/YPGN/Documents/GitHub/codecaine-react-frontend/.github/workflows/*.yml)",
+      "Bash(cat /c/Users/YPGN/Documents/GitHub/codecaine-python-users/.github/workflows/*.yml)",
+      "Bash(find /c/Users/YPGN/Documents/GitHub/codecaine-python-users/app/api -name *.py)",
+      "Bash(psql:*)",
+      "Bash(AWS_PROFILE=ypgn aws sts get-caller-identity 2>&1)",
+      "Bash(AWS_PROFILE=ypgn aws ec2 describe-instances \\\\\n  --filters \"Name=instance-state-name,Values=running\" \\\\\n  --query \"Reservations[].Instances[].[InstanceId, Tags[?Key=='Name'].Value | [0], State.Name]\" \\\\\n  --output table 2>&1)",
+      "Bash(AWS_PROFILE=ypgn aws ssm describe-instance-information \\\\\n  --query \"InstanceInformationList[].[InstanceId, PingStatus, ComputerName]\" \\\\\n  --output table 2>&1)",
+      "Bash(AWS_PROFILE=ypgn aws ec2 describe-instances \\\\\n  --instance-ids i-0a14c685c7e280b1b i-075a1c2ecd71db1d3 \\\\\n  --query \"Reservations[].Instances[].[InstanceId, Tags[?Key=='Name'].Value | [0], PublicIpAddress, PrivateIpAddress]\" \\\\\n  --output table 2>&1)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5NDA4ZGRmYy1iMDAxLTcwNDktZTEyNi0yYWVjMGY4ZTJmNzciLCJleHAiOjE3NzQ5NDMyODh9.7QvNb9f3ONHHYiBSbAo2_WAj09CLXsAopKI5cPi1h9A\" COGNITO_ID=\"9408ddfc-b001-7049-e126-2aec0f8e2f77\" __NEW_LINE_2751a8e1fff2e616__ curl -s -X GET \"http://localhost:18003/api/users/$COGNITO_ID\" -H \"Authorization: Bearer $TOKEN\")",
+      "Skill(update-config)",
+      "Bash(jq:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "You are a code reviewer. A file was just modified. Review the changed file for the following and report only real issues — skip praise or summaries.\n\n**Security (report any of these):**\n- SQL injection / ORM raw query injection\n- Command injection (subprocess, os.system, eval, exec)\n- Hardcoded secrets, tokens, or passwords\n- Insecure authentication or authorization logic\n- Sensitive data exposed in logs or responses\n- Path traversal vulnerabilities\n- Unvalidated external input used in dangerous operations\n\n**Code Quality (report significant issues only):**\n- Logic errors or incorrect conditionals\n- Unhandled exceptions that could cause silent failures\n- Resource leaks (unclosed DB connections, file handles)\n- Duplicate or dead code that creates confusion\n- Missing input validation at system boundaries (user input, external APIs)\n\nFormat your response as:\n```\n[SECURITY] <issue> — <file>:<line>\n[QUALITY] <issue> — <file>:<line>\n```\nIf no issues found, output: `✓ No issues found`\n\nFile info: $ARGUMENTS",
+            "timeout": 60,
+            "statusMessage": "Code review 진행 중..."
+          }
+        ]
+      }
     ]
   }
 }

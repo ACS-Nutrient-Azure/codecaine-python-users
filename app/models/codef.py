@@ -15,7 +15,7 @@ class ExternalHealthcheckImport(Base):
     cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
     api_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)       # healthcheck/rx_prescription
     source_s3_url: Mapped[str | None] = mapped_column(String, nullable=True)      # s3 경로
-    exprires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 오타 그대로 유지, 1개월 후 삭제
+    exprires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 1개월 후 삭제 (DB 컬럼명 오타 유지 — ALTER TABLE 후 수정 예정)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -25,6 +25,7 @@ class CodefApiCallLog(Base):
 
     log_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     import_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
     api_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)       # healthcheck/rx_prescription
     agred_dt: Mapped[date | None] = mapped_column(Date, nullable=True)            # 오타 그대로 유지, YYYY-MM-DD
     phone_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)     # 해시암호화
@@ -41,6 +42,7 @@ class PrescriptionMedication(Base):
 
     med_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     import_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
     api_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)       # healthcheck/rx_prescription
     data_type: Mapped[str | None] = mapped_column(String(50), nullable=True)      # drug, blood_pressure, cholesterol, glucose 등
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)          # 약품명/혈압/혈당 등
