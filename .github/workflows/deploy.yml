@@ -3,7 +3,7 @@ name: Deploy to ECS
 on:
   push:
     branches: [deploy]
-    paths: ['app/**', '.github/workflows/deploy.yml']
+    paths: ['app/**', 'Dockerfile', 'requirements.txt', '.github/workflows/deploy.yml']
   workflow_dispatch:
 
 env:
@@ -34,7 +34,7 @@ jobs:
         run: |
           TAG=$(date -u +%s)
           IMAGE=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$TAG
-          docker build -t $IMAGE .
+          docker build --platform linux/amd64 -t $IMAGE .
           docker push $IMAGE
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 

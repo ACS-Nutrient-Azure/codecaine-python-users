@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserProfile, UserConditionSnapshot
-from app.models.supplement import CurrentSupplement
+from app.models.supplement import CurrentSupplement, CurrentIngredient
 from app.schemas.user import (
     UserProfileResponse,
     UserProfileUpdateRequest,
@@ -152,6 +152,16 @@ class UserService:
         )
         db.add(supplement)
         await db.flush()
+
+        if data.ans_ingredients:
+            for name, amount in data.ans_ingredients.items():
+                db.add(CurrentIngredient(
+                    current_id=supplement.current_id,
+                    ingredient_name=name,
+                    nutrient_amount=int(amount),
+                ))
+            await db.flush()
+
         return SupplementResponse.model_validate(supplement)
 
     async def update_supplement(

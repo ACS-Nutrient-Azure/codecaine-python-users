@@ -15,7 +15,7 @@ class ExternalHealthcheckImport(Base):
     cognito_id: Mapped[str] = mapped_column(String(36), nullable=False)
     api_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)       # healthcheck/rx_prescription
     source_s3_url: Mapped[str | None] = mapped_column(String, nullable=True)      # s3 경로
-    exprires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 오타 그대로 유지, 1개월 후 삭제
+    exprires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 1개월 후 삭제 (DB 컬럼명 오타 유지 — ALTER TABLE 후 수정 예정)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
