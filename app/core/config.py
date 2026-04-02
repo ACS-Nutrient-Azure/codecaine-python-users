@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
 
+    # History DB (vitamin_history)
+    history_database_url: str = ""
+
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     s3_bucket_name: str = ""
