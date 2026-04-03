@@ -108,4 +108,29 @@ export const api = {
     formData.append("cognito_id", cognitoId);
     return requestFormData("/supplements/scan", formData);
   },
+
+  // History / Records
+  getHistorySupplements: (cognitoId: string, isActive?: boolean) => {
+    const params = new URLSearchParams({ cognito_id: cognitoId });
+    if (isActive !== undefined) params.set("is_active", String(isActive));
+    return request(`/history/supplements?${params}`);
+  },
+  getHistoryRecords: (cognitoId: string, year: number, month: number) => {
+    const params = new URLSearchParams({
+      cognito_id: cognitoId,
+      year: String(year),
+      month: String(month),
+    });
+    return request(`/history/records?${params}`);
+  },
+  upsertHistoryRecord: (data: {
+    cognito_id: string;
+    current_id: number;
+    date: string;
+    taken_count: number;
+  }) =>
+    request("/history/records", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
