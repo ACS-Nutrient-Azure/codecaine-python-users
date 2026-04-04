@@ -1,8 +1,11 @@
 import asyncio
 import hashlib
+import logging
 from datetime import date, datetime, timezone, timedelta
 from functools import partial
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 from app.schemas.codef import (
     CodefUserInfo, CodefInitResponse, CodefFetchRequest,
     CodefPrescInitResponse, CodefPrescFetchRequest,
@@ -71,6 +74,7 @@ async def codef_init(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("[codef_init] 500 error")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/fetch")
@@ -208,6 +212,7 @@ async def codef_fetch(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("[codef_fetch] 500 error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -253,6 +258,7 @@ async def codef_presc_init(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("[codef_presc_init] 500 error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -342,6 +348,7 @@ async def codef_presc_fetch(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("[codef_presc_fetch] 500 error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
