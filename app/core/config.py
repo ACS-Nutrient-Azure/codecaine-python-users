@@ -25,9 +25,13 @@ class Settings(BaseSettings):
             )
         raise ValueError("DATABASE_URL 또는 DB_HOST/DB_NAME/DB_USER/DB_PASSWORD/DB_PORT 환경변수가 필요합니다.")
 
-    # Cognito
+    # Entra External ID (Cognito 대체) - 이름은 cognito지만 실제로는
+    # cognito_user_pool_id에 Entra 테넌트 ID, cognito_client_id에 앱
+    # client ID가 들어감. DB 컬럼/API 파라미터명(cognito_id)이 이미 전역적으로
+    # 쓰이고 있어서 필드명은 그대로 두고 값의 출처만 바뀜.
     cognito_user_pool_id: str = ""
     cognito_client_id: str = ""
+    entra_tenant_subdomain: str = ""
     aws_region: str = "ap-northeast-2"
 
     # JWT fallback (dev only — used when cognito_user_pool_id is not set)

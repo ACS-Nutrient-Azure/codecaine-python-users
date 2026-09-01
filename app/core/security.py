@@ -30,8 +30,8 @@ def _get_cognito_jwks() -> list:
     if now < _jwks_cache["expires_at"] and _jwks_cache["keys"]:
         return _jwks_cache["keys"]
     url = (
-        f"https://cognito-idp.{settings.aws_region}.amazonaws.com"
-        f"/{settings.cognito_user_pool_id}/.well-known/jwks.json"
+        f"https://{settings.entra_tenant_subdomain}.ciamlogin.com"
+        f"/{settings.cognito_user_pool_id}/discovery/v2.0/keys"
     )
     # httpx.Client (동기) — run_in_executor로 감싸서 호출됨
     with httpx.Client(timeout=5) as client:
@@ -53,7 +53,7 @@ def _verify_cognito_token(token: str) -> dict:
         token,
         key,
         algorithms=["RS256"],
-        options={"verify_aud": False},  # access token은 aud 클레임 없음
+        audience=settings.cognito_client_id,  # 프론트가 보내는 건 ID 토큰이라 aud 클레임이 있음
     )
     return payload
 
