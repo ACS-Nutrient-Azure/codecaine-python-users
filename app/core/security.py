@@ -30,8 +30,8 @@ def _get_cognito_jwks() -> list:
     if now < _jwks_cache["expires_at"] and _jwks_cache["keys"]:
         return _jwks_cache["keys"]
     url = (
-        f"https://cognito-idp.{settings.aws_region}.amazonaws.com"
-        f"/{settings.cognito_user_pool_id}/.well-known/jwks.json"
+        f"https://{settings.entra_tenant_subdomain}.ciamlogin.com"
+        f"/{settings.cognito_user_pool_id}/discovery/v2.0/keys"
     )
     # httpx.Client (동기) — run_in_executor로 감싸서 호출됨
     with httpx.Client(timeout=5) as client:
